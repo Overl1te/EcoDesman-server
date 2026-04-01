@@ -47,6 +47,33 @@ Compose already provides defaults for local development:
 
 Override them through shell env vars or a `.env` file before `docker compose up`.
 
+## VPS Deploy
+
+Target server:
+
+- Ubuntu
+- IP: `130.49.150.192`
+- repo: `git@github.com:Overl1te/EcoNizhny-server.git`
+
+There is a standalone deploy script prepared for `~/deploy_econizhny_server.sh`:
+
+- `deploy_econizhny_server.sh`
+
+What it does:
+
+- installs `git`, Docker Engine and Docker Compose plugin
+- expects the repo to already exist in `~/EcoNizhny-server`
+- updates the existing checkout with `git fetch` + `git pull`
+- creates `~/EcoNizhny-server/.env` if it does not exist
+- builds and starts the stack with `docker compose up --build -d`
+- waits for `http://127.0.0.1/api/v1/health/`
+
+If `~/EcoNizhny-server` is missing or is not a git repo, the script will stop and ask you to clone the repo there first.
+
+Environment template for production:
+
+- `.env.production.example`
+
 ## Demo Accounts
 
 - `anna@econizhny.local` / `demo12345`
