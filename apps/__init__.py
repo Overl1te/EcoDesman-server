@@ -1,1 +1,1 @@
-"""Application modules for EcoNizhny API."""
+"""Application modules for ЭкоВыхухоль API."""

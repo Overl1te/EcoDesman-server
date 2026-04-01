@@ -16,7 +16,7 @@ class HealthcheckView(APIView):
         return Response(
             {
                 "status": "ok",
-                "service": "EcoNizhny API",
+                "service": "ЭкоВыхухоль API",
                 "version": "v1",
                 "timezone": settings.TIME_ZONE,
             }

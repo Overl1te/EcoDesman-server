@@ -42,7 +42,7 @@ def seed_social_features(apps, schema_editor):
         email="admin@econizhny.local",
         defaults={
             "username": "eco_admin",
-            "display_name": "EcoNizhny Admin",
+            "display_name": "ЭкоВыхухоль Admin",
             "phone": "+79990000003",
             "avatar_url": "https://picsum.photos/seed/econizhny-user-3/400/400",
             "password": make_password("demo12345"),

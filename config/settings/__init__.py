@@ -1,1 +1,1 @@
-"""Settings package for EcoNizhny API."""
+"""Settings package for ЭкоВыхухоль API."""

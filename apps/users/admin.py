@@ -8,7 +8,7 @@ from .models import User
 class EcoNizhnyUserAdmin(UserAdmin):
     fieldsets = UserAdmin.fieldsets + (
         (
-            "EcoNizhny",
+            "ЭкоВыхухоль",
             {
                 "fields": (
                     "display_name",

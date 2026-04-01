@@ -1,6 +1,6 @@
-# EcoNizhny Server
+# ЭкоВыхухоль Server
 
-Django API for the `EcoNizhny` mobile client.
+Django API for the `ЭкоВыхухоль` mobile client.
 
 ## Implemented
 
