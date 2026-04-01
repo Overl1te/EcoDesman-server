@@ -1,0 +1,56 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-econizhny}
+      POSTGRES_USER: ${POSTGRES_USER:-econizhny}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-econizhny}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-econizhny} -d ${POSTGRES_DB:-econizhny}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  web:
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command:
+      [
+        "gunicorn",
+        "config.wsgi:application",
+        "--bind",
+        "0.0.0.0:8000",
+        "--workers",
+        "3",
+        "--timeout",
+        "60",
+      ]
+    environment:
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-true}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-127.0.0.1,localhost,0.0.0.0}
+      POSTGRES_DB: ${POSTGRES_DB:-econizhny}
+      POSTGRES_USER: ${POSTGRES_USER:-econizhny}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-econizhny}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+    ports:
+      - "${WEB_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - .:/app
+
+volumes:
+  postgres_data:
