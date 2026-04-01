@@ -1,15 +1,35 @@
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
 from rest_framework import serializers
 
 from ..models import Post, PostComment, PostImage
 from ..services import can_edit_comment, can_edit_post
 
 
+def build_versioned_media_url(url: str, updated_at) -> str:
+    if not url or updated_at is None:
+        return url
+
+    parts = urlsplit(url)
+    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+    query["v"] = str(int(updated_at.timestamp()))
+    return urlunsplit(
+        (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
+    )
+
+
 class PostAuthorSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     name = serializers.CharField(source="display_name")
-    avatar_url = serializers.CharField()
+    avatar_url = serializers.SerializerMethodField()
     role = serializers.CharField()
     status_text = serializers.CharField()
+
+    def get_avatar_url(self, obj) -> str:
+        return build_versioned_media_url(
+            getattr(obj, "avatar_url", ""),
+            getattr(obj, "updated_at", None),
+        )
 
 
 class PostImageSerializer(serializers.ModelSerializer):

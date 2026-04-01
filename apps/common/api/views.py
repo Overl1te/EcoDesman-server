@@ -30,14 +30,14 @@ class ImageUploadView(APIView):
         upload = request.FILES.get("file")
         if upload is None:
             return Response(
-                {"detail": "file is required"},
+                {"detail": "Нужно выбрать файл"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         extension = os.path.splitext(upload.name)[1].lower() or ".jpg"
         if extension not in {".jpg", ".jpeg", ".png", ".webp"}:
             return Response(
-                {"detail": "unsupported file type"},
+                {"detail": "Поддерживаются только JPG, PNG и WEBP"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

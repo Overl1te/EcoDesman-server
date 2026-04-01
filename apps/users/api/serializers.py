@@ -1,3 +1,5 @@
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
@@ -24,8 +26,21 @@ class UserStatsSerializer(serializers.Serializer):
     views_received_count = serializers.IntegerField()
 
 
+def build_versioned_media_url(url: str, updated_at) -> str:
+    if not url or updated_at is None:
+        return url
+
+    parts = urlsplit(url)
+    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+    query["v"] = str(int(updated_at.timestamp()))
+    return urlunsplit(
+        (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
+    )
+
+
 class UserSummarySerializer(serializers.ModelSerializer):
     name = serializers.CharField(source="display_name")
+    avatar_url = serializers.SerializerMethodField()
     is_banned = serializers.BooleanField(read_only=True)
 
     class Meta:
@@ -41,9 +56,13 @@ class UserSummarySerializer(serializers.ModelSerializer):
             "is_banned",
         )
 
+    def get_avatar_url(self, obj: User) -> str:
+        return build_versioned_media_url(obj.avatar_url, obj.updated_at)
+
 
 class CurrentUserSerializer(serializers.ModelSerializer):
     name = serializers.CharField(source="display_name")
+    avatar_url = serializers.SerializerMethodField()
     stats = serializers.SerializerMethodField()
     is_banned = serializers.BooleanField(read_only=True)
 
@@ -73,9 +92,13 @@ class CurrentUserSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         return get_profile_stats(obj, viewer=getattr(request, "user", None))
 
+    def get_avatar_url(self, obj: User) -> str:
+        return build_versioned_media_url(obj.avatar_url, obj.updated_at)
+
 
 class PublicProfileSerializer(serializers.ModelSerializer):
     name = serializers.CharField(source="display_name")
+    avatar_url = serializers.SerializerMethodField()
     stats = serializers.SerializerMethodField()
     is_banned = serializers.BooleanField(read_only=True)
 
@@ -102,6 +125,9 @@ class PublicProfileSerializer(serializers.ModelSerializer):
     def get_stats(self, obj: User) -> dict[str, int]:
         request = self.context.get("request")
         return get_profile_stats(obj, viewer=getattr(request, "user", None))
+
+    def get_avatar_url(self, obj: User) -> str:
+        return build_versioned_media_url(obj.avatar_url, obj.updated_at)
 
 
 class LoginSerializer(serializers.Serializer):
