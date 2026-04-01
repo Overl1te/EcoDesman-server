@@ -1,7 +1,19 @@
+from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
+from rest_framework.exceptions import PermissionDenied
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+from rest_framework_simplejwt.settings import api_settings
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from ..models import User
 from ..selectors import get_profile_stats
+from ..services import (
+    create_user_account,
+    normalize_email,
+    normalize_phone,
+    normalize_username,
+)
 
 
 class UserStatsSerializer(serializers.Serializer):
@@ -97,16 +109,22 @@ class LoginSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True, trim_whitespace=False)
 
 
-class LoginResponseSerializer(serializers.Serializer):
+class AuthSessionSerializer(serializers.Serializer):
     access = serializers.CharField()
     refresh = serializers.CharField()
     user = CurrentUserSerializer()
 
 
 class ProfileSettingsSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(required=False)
+    email = serializers.EmailField(required=False)
+    phone = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
     class Meta:
         model = User
         fields = (
+            "username",
+            "email",
             "display_name",
             "phone",
             "avatar_url",
@@ -118,6 +136,158 @@ class ProfileSettingsSerializer(serializers.ModelSerializer):
             "vk_url",
             "instagram_url",
         )
+
+    def validate_username(self, value: str) -> str:
+        normalized = normalize_username(value)
+        if not normalized:
+            raise serializers.ValidationError("Введите username")
+
+        User.username_validator(normalized)
+        queryset = User.objects.exclude(pk=self.instance.pk).filter(
+            username__iexact=normalized,
+        )
+        if queryset.exists():
+            raise serializers.ValidationError("Этот username уже занят")
+        return normalized
+
+    def validate_email(self, value: str) -> str:
+        normalized = normalize_email(value)
+        queryset = User.objects.exclude(pk=self.instance.pk).filter(
+            email__iexact=normalized,
+        )
+        if queryset.exists():
+            raise serializers.ValidationError("Аккаунт с таким email уже существует")
+        return normalized
+
+    def validate_phone(self, value: str | None) -> str | None:
+        normalized = normalize_phone(value)
+        if normalized is None:
+            return None
+
+        queryset = User.objects.exclude(pk=self.instance.pk).filter(
+            phone__iexact=normalized,
+        )
+        if queryset.exists():
+            raise serializers.ValidationError("Этот номер уже привязан к другому аккаунту")
+        return normalized
+
+    def update(self, instance: User, validated_data: dict) -> User:
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+
+        if not instance.display_name:
+            instance.display_name = instance.username
+
+        instance.save()
+        return instance
+
+
+class RegisterSerializer(serializers.Serializer):
+    username = serializers.CharField(min_length=3, max_length=150)
+    email = serializers.EmailField()
+    display_name = serializers.CharField(required=False, allow_blank=True, max_length=120)
+    phone = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=32)
+    password = serializers.CharField(write_only=True, trim_whitespace=False, min_length=8)
+    password_confirmation = serializers.CharField(write_only=True, trim_whitespace=False)
+
+    def validate_username(self, value: str) -> str:
+        normalized = normalize_username(value)
+        if not normalized:
+            raise serializers.ValidationError("Введите username")
+
+        User.username_validator(normalized)
+        if User.objects.filter(username__iexact=normalized).exists():
+            raise serializers.ValidationError("Этот username уже занят")
+        return normalized
+
+    def validate_email(self, value: str) -> str:
+        normalized = normalize_email(value)
+        if User.objects.filter(email__iexact=normalized).exists():
+            raise serializers.ValidationError("Аккаунт с таким email уже существует")
+        return normalized
+
+    def validate_phone(self, value: str | None) -> str | None:
+        normalized = normalize_phone(value)
+        if normalized is None:
+            return None
+
+        if User.objects.filter(phone__iexact=normalized).exists():
+            raise serializers.ValidationError("Этот номер уже привязан к другому аккаунту")
+        return normalized
+
+    def validate(self, attrs: dict) -> dict:
+        if attrs["password"] != attrs["password_confirmation"]:
+            raise serializers.ValidationError(
+                {"password_confirmation": ["Пароли не совпадают"]},
+            )
+
+        temp_user = User(
+            username=attrs["username"],
+            email=attrs["email"],
+            phone=attrs.get("phone"),
+            display_name=attrs.get("display_name", "").strip(),
+        )
+        validate_password(attrs["password"], user=temp_user)
+        return attrs
+
+    def create(self, validated_data: dict) -> User:
+        return create_user_account(
+            username=validated_data["username"],
+            email=validated_data["email"],
+            password=validated_data["password"],
+            display_name=validated_data.get("display_name", ""),
+            phone=validated_data.get("phone"),
+        )
+
+
+class LogoutSerializer(serializers.Serializer):
+    refresh = serializers.CharField(trim_whitespace=True)
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    current_password = serializers.CharField(write_only=True, trim_whitespace=False)
+    new_password = serializers.CharField(write_only=True, trim_whitespace=False, min_length=8)
+    new_password_confirmation = serializers.CharField(write_only=True, trim_whitespace=False)
+
+    def validate(self, attrs: dict) -> dict:
+        request = self.context["request"]
+        user = request.user
+
+        if not user.check_password(attrs["current_password"]):
+            raise serializers.ValidationError(
+                {"current_password": ["Неверный текущий пароль"]},
+            )
+
+        if attrs["new_password"] != attrs["new_password_confirmation"]:
+            raise serializers.ValidationError(
+                {"new_password_confirmation": ["Пароли не совпадают"]},
+            )
+
+        if attrs["current_password"] == attrs["new_password"]:
+            raise serializers.ValidationError(
+                {"new_password": ["Новый пароль должен отличаться от текущего"]},
+            )
+
+        validate_password(attrs["new_password"], user=user)
+        return attrs
+
+
+class SafeTokenRefreshSerializer(TokenRefreshSerializer):
+    def validate(self, attrs: dict) -> dict:
+        try:
+            refresh = RefreshToken(attrs["refresh"])
+        except TokenError as error:
+            raise InvalidToken(str(error)) from error
+
+        user_id = refresh.payload.get(api_settings.USER_ID_CLAIM)
+        if user_id is None:
+            raise serializers.ValidationError({"detail": "Некорректный refresh token"})
+
+        user = User.objects.filter(**{api_settings.USER_ID_FIELD: user_id}).first()
+        if user is None or not user.is_active:
+            raise PermissionDenied("Аккаунт недоступен")
+
+        return super().validate(attrs)
 
 
 class UserRoleSerializer(serializers.Serializer):

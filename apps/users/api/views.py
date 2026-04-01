@@ -3,13 +3,17 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenRefreshView
 
 from ..models import User
 from ..selectors import search_users
 from ..services import (
     authenticate_user,
     ban_user,
+    blacklist_refresh_token,
+    blacklist_user_refresh_tokens,
     can_administrate,
     get_user_by_identifier,
     issue_warning,
@@ -17,13 +21,26 @@ from ..services import (
     update_user_role,
 )
 from .serializers import (
+    ChangePasswordSerializer,
     CurrentUserSerializer,
     LoginSerializer,
+    LogoutSerializer,
     ProfileSettingsSerializer,
     PublicProfileSerializer,
+    RegisterSerializer,
+    SafeTokenRefreshSerializer,
     UserRoleSerializer,
     UserSummarySerializer,
 )
+
+
+def build_auth_response(*, user: User, request) -> dict:
+    refresh = RefreshToken.for_user(user)
+    return {
+        "access": str(refresh.access_token),
+        "refresh": str(refresh),
+        "user": CurrentUserSerializer(user, context={"request": request}).data,
+    }
 
 
 class LoginView(APIView):
@@ -49,14 +66,55 @@ class LoginView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
-        refresh = RefreshToken.for_user(user)
+        return Response(build_auth_response(user=user, request=request))
+
+
+class RegisterView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = RegisterSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
         return Response(
-            {
-                "access": str(refresh.access_token),
-                "refresh": str(refresh),
-                "user": CurrentUserSerializer(user, context={"request": request}).data,
-            }
+            build_auth_response(user=user, request=request),
+            status=status.HTTP_201_CREATED,
         )
+
+
+class RefreshView(TokenRefreshView):
+    serializer_class = SafeTokenRefreshSerializer
+
+
+class LogoutView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = LogoutSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            blacklist_refresh_token(serializer.validated_data["refresh"])
+        except TokenError as error:
+            raise InvalidToken(str(error)) from error
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ChangePasswordView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = ChangePasswordSerializer(
+            data=request.data,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+
+        request.user.set_password(serializer.validated_data["new_password"])
+        request.user.save(update_fields=["password"])
+        blacklist_user_refresh_tokens(request.user)
+        request.user.refresh_from_db()
+
+        return Response(build_auth_response(user=request.user, request=request))
 
 
 class MeView(APIView):
