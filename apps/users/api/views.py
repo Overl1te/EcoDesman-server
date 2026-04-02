@@ -25,6 +25,7 @@ from .serializers import (
     CurrentUserSerializer,
     LoginSerializer,
     LogoutSerializer,
+    PasswordResetRequestSerializer,
     ProfileSettingsSerializer,
     PublicProfileSerializer,
     RegisterSerializer,
@@ -97,6 +98,23 @@ class LogoutView(APIView):
         except TokenError as error:
             raise InvalidToken(str(error)) from error
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class PasswordResetRequestView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = PasswordResetRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return Response(
+            {
+                "detail": (
+                    "Запрос принят. Когда подключим письмо или SMS, "
+                    "инструкция по восстановлению будет приходить сюда."
+                ),
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class ChangePasswordView(APIView):

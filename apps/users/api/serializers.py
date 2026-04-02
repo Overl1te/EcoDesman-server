@@ -270,6 +270,16 @@ class LogoutSerializer(serializers.Serializer):
     refresh = serializers.CharField(trim_whitespace=True)
 
 
+class PasswordResetRequestSerializer(serializers.Serializer):
+    identifier = serializers.CharField(trim_whitespace=True)
+
+    def validate_identifier(self, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise serializers.ValidationError("Введите почту, телефон или логин")
+        return normalized
+
+
 class ChangePasswordSerializer(serializers.Serializer):
     current_password = serializers.CharField(write_only=True, trim_whitespace=False)
     new_password = serializers.CharField(write_only=True, trim_whitespace=False, min_length=8)

@@ -10,3 +10,7 @@ env/
 db.sqlite3
 media/
 staticfiles/
+backups/*
+!backups/.gitkeep
+runtime_logs/*
+!runtime_logs/.gitkeep

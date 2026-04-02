@@ -6,7 +6,10 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
 COPY requirements ./requirements
-RUN pip install --no-cache-dir -r requirements/base.txt
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates postgresql-client \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir -r requirements/base.txt
 
 COPY . .
 

@@ -123,6 +123,26 @@ class AuthApiTests(TestCase):
         )
         self.assertEqual(refresh_response.status_code, 401)
 
+    def test_password_reset_request_returns_generic_message_for_existing_user(self):
+        response = self.client.post(
+            reverse("auth-password-reset-request"),
+            {"identifier": "anna@econizhny.local"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("detail", response.json())
+
+    def test_password_reset_request_returns_generic_message_for_unknown_user(self):
+        response = self.client.post(
+            reverse("auth-password-reset-request"),
+            {"identifier": "missing-user"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("detail", response.json())
+
     def test_change_password_rotates_session_and_invalidates_old_credentials(self):
         payload = self.login_payload()
 

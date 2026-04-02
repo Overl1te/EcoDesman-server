@@ -1,6 +1,9 @@
 import os
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import urlsplit
+
+from django.core.exceptions import ImproperlyConfigured
 
 
 def env_bool(name: str, default: bool = False) -> bool:
@@ -13,7 +16,99 @@ def env_list(name: str, default: str = "") -> list[str]:
     return [item.strip() for item in raw_value.split(",") if item.strip()]
 
 
+def env_str(name: str, default: str = "") -> str:
+    return os.getenv(name, default).strip()
+
+
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+
+def build_storage_settings() -> tuple[dict, str, bool]:
+    use_s3_media = env_bool("DJANGO_USE_S3_MEDIA", default=False)
+    storages = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
+    media_url = "media/"
+    serve_media_files = env_bool("DJANGO_SERVE_MEDIA", default=DEBUG) and not use_s3_media
+
+    if not use_s3_media:
+        return storages, media_url, serve_media_files
+
+    bucket_name = env_str("AWS_STORAGE_BUCKET_NAME")
+    endpoint_url = env_str("AWS_S3_ENDPOINT_URL").rstrip("/")
+    access_key = env_str("AWS_S3_ACCESS_KEY_ID") or env_str("AWS_ACCESS_KEY_ID")
+    secret_key = env_str("AWS_S3_SECRET_ACCESS_KEY") or env_str("AWS_SECRET_ACCESS_KEY")
+    custom_domain = (
+        env_str("AWS_S3_CUSTOM_DOMAIN")
+        .removeprefix("https://")
+        .removeprefix("http://")
+        .rstrip("/")
+    )
+    location = env_str("AWS_LOCATION")
+    region_name = env_str("AWS_S3_REGION_NAME")
+    addressing_style = env_str("AWS_S3_ADDRESSING_STYLE", "virtual")
+    signature_version = env_str("AWS_S3_SIGNATURE_VERSION", "s3v4")
+    verify = env_str("AWS_S3_VERIFY")
+    default_acl = env_str("AWS_DEFAULT_ACL")
+    object_acl = env_str("AWS_S3_OBJECT_ACL")
+
+    if not bucket_name:
+        raise ImproperlyConfigured(
+            "AWS_STORAGE_BUCKET_NAME must be set when DJANGO_USE_S3_MEDIA=true",
+        )
+
+    if not endpoint_url:
+        raise ImproperlyConfigured(
+            "AWS_S3_ENDPOINT_URL must be set when DJANGO_USE_S3_MEDIA=true",
+        )
+
+    options: dict[str, object] = {
+        "bucket_name": bucket_name,
+        "endpoint_url": endpoint_url,
+        "querystring_auth": env_bool("AWS_QUERYSTRING_AUTH", default=False),
+        "file_overwrite": env_bool("AWS_S3_FILE_OVERWRITE", default=False),
+        "addressing_style": addressing_style,
+        "signature_version": signature_version,
+    }
+
+    if access_key:
+        options["access_key"] = access_key
+    if secret_key:
+        options["secret_key"] = secret_key
+    if region_name:
+        options["region_name"] = region_name
+    if verify:
+        options["verify"] = verify
+    if custom_domain:
+        options["custom_domain"] = custom_domain
+    if location:
+        options["location"] = location
+    if default_acl:
+        options["default_acl"] = default_acl
+    if object_acl:
+        options["object_parameters"] = {"ACL": object_acl}
+
+    storages["default"] = {
+        "BACKEND": "storages.backends.s3.S3Storage",
+        "OPTIONS": options,
+    }
+
+    if custom_domain:
+        media_url = f"https://{custom_domain.strip('/')}/"
+        return storages, media_url, serve_media_files
+
+    parsed_endpoint = urlsplit(endpoint_url)
+    if addressing_style == "path":
+        media_url = f"{parsed_endpoint.scheme}://{parsed_endpoint.netloc}/{bucket_name}/"
+    else:
+        media_url = f"{parsed_endpoint.scheme}://{bucket_name}.{parsed_endpoint.netloc}/"
+
+    return storages, media_url, serve_media_files
 
 
 def build_database_settings() -> dict:
@@ -58,6 +153,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
     "apps.common.apps.CommonConfig",
+    "apps.map_points.apps.MapPointsConfig",
     "apps.notifications.apps.NotificationsConfig",
     "apps.users.apps.UsersConfig",
     "apps.posts.apps.PostsConfig",
@@ -118,13 +214,17 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
-MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
-SERVE_MEDIA_FILES = env_bool("DJANGO_SERVE_MEDIA", default=DEBUG)
+RUNTIME_LOGS_DIR = BASE_DIR / "runtime_logs"
+BACKUPS_DIR = BASE_DIR / "backups"
+STORAGES, MEDIA_URL, SERVE_MEDIA_FILES = build_storage_settings()
+
+for required_dir in (MEDIA_ROOT, STATIC_ROOT, RUNTIME_LOGS_DIR, BACKUPS_DIR):
+    required_dir.mkdir(parents=True, exist_ok=True)
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "users.User"
+APP_LOG_LEVEL = env_str("APP_LOG_LEVEL", "INFO").upper()
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
@@ -147,4 +247,52 @@ SIMPLE_JWT = {
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
     "UPDATE_LAST_LOGIN": True,
+}
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        },
+        "simple": {
+            "format": "[%(levelname)s] %(message)s",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "simple",
+            "level": APP_LOG_LEVEL,
+        },
+        "app_file": {
+            "class": "logging.handlers.WatchedFileHandler",
+            "filename": str(RUNTIME_LOGS_DIR / "django.log"),
+            "formatter": "verbose",
+            "level": APP_LOG_LEVEL,
+        },
+        "error_file": {
+            "class": "logging.handlers.WatchedFileHandler",
+            "filename": str(RUNTIME_LOGS_DIR / "django.error.log"),
+            "formatter": "verbose",
+            "level": "ERROR",
+        },
+    },
+    "root": {
+        "handlers": ["console", "app_file", "error_file"],
+        "level": APP_LOG_LEVEL,
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console", "app_file", "error_file"],
+            "level": APP_LOG_LEVEL,
+            "propagate": False,
+        },
+        "apps": {
+            "handlers": ["console", "app_file", "error_file"],
+            "level": APP_LOG_LEVEL,
+            "propagate": False,
+        },
+    },
 }
