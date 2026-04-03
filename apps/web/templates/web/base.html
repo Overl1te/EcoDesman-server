@@ -1,0 +1,160 @@
+{% load static web_tags %}
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}{{ page_title }} · {{ web_app_name }}{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Material+Symbols+Rounded:FILL@1" rel="stylesheet">
+    <link rel="stylesheet" href="{% static 'web/app.css' %}">
+    {% block extra_head %}{% endblock %}
+  </head>
+  <body>
+    <div class="app-layout">
+      <aside class="sidebar">
+        <div class="brand-card">
+          <div class="brand-mark">ЭВ</div>
+          <div>
+            <p class="eyebrow">Экосообщество</p>
+            <h1>{{ web_app_name }}</h1>
+          </div>
+        </div>
+
+        <nav class="nav-list" aria-label="Основная навигация">
+          <a class="nav-link {% if active_nav == 'feed' %}is-active{% endif %}" href="{% url 'web-feed' %}">
+            <span class="material-symbols-rounded">article</span>
+            <span>Лента</span>
+          </a>
+          <a class="nav-link {% if active_nav == 'events' %}is-active{% endif %}" href="{% url 'web-events' %}">
+            <span class="material-symbols-rounded">event</span>
+            <span>Мероприятия</span>
+          </a>
+          <a class="nav-link {% if active_nav == 'map' %}is-active{% endif %}" href="{% url 'web-map' %}">
+            <span class="material-symbols-rounded">map</span>
+            <span>Карта</span>
+          </a>
+          {% if request.user.is_authenticated %}
+            <a class="nav-link {% if active_nav == 'favorites' %}is-active{% endif %}" href="{% url 'web-favorites' %}">
+              <span class="material-symbols-rounded">bookmark</span>
+              <span>Избранное</span>
+            </a>
+            <a class="nav-link {% if active_nav == 'profile' %}is-active{% endif %}" href="{% url 'web-profile' %}">
+              <span class="material-symbols-rounded">person</span>
+              <span>Профиль</span>
+            </a>
+          {% endif %}
+        </nav>
+
+        <div class="sidebar-footer">
+          {% if request.user.is_authenticated %}
+            <div class="sidebar-profile">
+              <div class="avatar-badge">
+                {% if request.user.avatar_url %}
+                  <img src="{{ request.user.avatar_url }}" alt="{{ request.user.display_name|default:request.user.username }}">
+                {% else %}
+                  <span>{{ request.user.display_name|default:request.user.username|slice:':1'|upper }}</span>
+                {% endif %}
+              </div>
+              <div>
+                <strong>{{ request.user.display_name|default:request.user.username }}</strong>
+                <p>@{{ request.user.username }}</p>
+              </div>
+            </div>
+            <div class="sidebar-actions">
+              <a class="button button-primary button-block" href="{% url 'web-post-create' %}">Новый пост</a>
+              <a class="button button-muted button-block" href="{% url 'web-notifications' %}">
+                Уведомления{% if web_unread_count %} · {{ web_unread_count }}{% endif %}
+              </a>
+              <form method="post" action="{% url 'web-logout' %}">
+                {% csrf_token %}
+                <button class="button button-ghost button-block" type="submit">Выйти</button>
+              </form>
+            </div>
+          {% else %}
+            <div class="auth-promo">
+              <h2>Войти в сообщество</h2>
+              <p>Лайкайте публикации, сохраняйте интересное и ведите свой экопрофиль.</p>
+              <div class="auth-promo-actions">
+                <a class="button button-primary button-block" href="{% url 'web-login' %}">Войти</a>
+                <a class="button button-muted button-block" href="{% url 'web-register' %}">Регистрация</a>
+              </div>
+            </div>
+          {% endif %}
+        </div>
+      </aside>
+
+      <div class="content-area">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">ЭкоВыхухоль</p>
+            <h2>{{ page_title }}</h2>
+          </div>
+          <div class="topbar-actions">
+            {% block topbar_actions %}{% endblock %}
+            <button class="button button-muted theme-toggle" type="button" data-theme-toggle aria-label="Сменить тему">
+              <span class="material-symbols-rounded" data-theme-icon>contrast</span>
+              <span data-theme-label>Тема</span>
+            </button>
+          </div>
+        </header>
+
+        <main class="page-shell">
+          {% if messages %}
+            <div class="flash-stack">
+              {% for message in messages %}
+                <div class="flash-message {{ message.tags }}">{{ message }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          {% block content %}{% endblock %}
+        </main>
+      </div>
+    </div>
+
+    <nav class="mobile-nav" aria-label="Мобильная навигация">
+      <a class="mobile-nav-link {% if active_nav == 'feed' %}is-active{% endif %}" href="{% url 'web-feed' %}">
+        <span class="material-symbols-rounded">article</span>
+        <span>Лента</span>
+      </a>
+      <a class="mobile-nav-link {% if active_nav == 'events' %}is-active{% endif %}" href="{% url 'web-events' %}">
+        <span class="material-symbols-rounded">event</span>
+        <span>События</span>
+      </a>
+      <a class="mobile-nav-link {% if active_nav == 'map' %}is-active{% endif %}" href="{% url 'web-map' %}">
+        <span class="material-symbols-rounded">map</span>
+        <span>Карта</span>
+      </a>
+      {% if request.user.is_authenticated %}
+        <a class="mobile-nav-link {% if active_nav == 'profile' or active_nav == 'favorites' %}is-active{% endif %}" href="{% url 'web-profile' %}">
+          <span class="material-symbols-rounded">person</span>
+          <span>Профиль</span>
+        </a>
+      {% else %}
+        <a class="mobile-nav-link {% if active_nav == 'auth' %}is-active{% endif %}" href="{% url 'web-login' %}">
+          <span class="material-symbols-rounded">login</span>
+          <span>Войти</span>
+        </a>
+      {% endif %}
+    </nav>
+
+    {% if request.user.is_authenticated and active_nav != 'auth' %}
+      <a class="floating-compose" href="{% url 'web-post-create' %}">
+        <span class="material-symbols-rounded">edit_square</span>
+        <span>Новый пост</span>
+      </a>
+    {% endif %}
+
+    <div class="lightbox" id="lightbox" hidden>
+      <button class="lightbox-close" type="button" data-lightbox-close aria-label="Закрыть">
+        <span class="material-symbols-rounded">close</span>
+      </button>
+      <img src="" alt="" id="lightbox-image">
+    </div>
+
+    <script src="{% static 'web/app.js' %}"></script>
+    {% block extra_scripts %}{% endblock %}
+  </body>
+</html>

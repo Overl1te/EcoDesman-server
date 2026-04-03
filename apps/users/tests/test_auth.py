@@ -78,6 +78,18 @@ class AuthApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["email"], "anna@econizhny.local")
         self.assertIn("stats", response.json())
+        self.assertFalse(response.json()["can_access_admin"])
+
+    def test_admin_me_reports_admin_panel_access(self):
+        access_token = self.login(identifier="admin@econizhny.local")
+
+        response = self.client.get(
+            reverse("auth-me"),
+            HTTP_AUTHORIZATION=f"Bearer {access_token}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["can_access_admin"])
 
     def test_me_patch_updates_profile_settings(self):
         access_token = self.login()

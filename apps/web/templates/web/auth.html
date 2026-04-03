@@ -1,0 +1,42 @@
+{% extends "web/base.html" %}
+
+{% block content %}
+  <section class="auth-layout">
+    <div class="auth-card">
+      <p class="eyebrow">Аккаунт</p>
+      <h3>{% if mode == "register" %}Создайте профиль{% else %}Вход в ЭкоВыхухоль{% endif %}</h3>
+      <p class="auth-subtitle">
+        {% if mode == "register" %}
+          Получите свой профиль, сохраненные публикации и доступ к созданию постов.
+        {% else %}
+          Войдите по почте, телефону или логину, чтобы продолжить работу с сообществом.
+        {% endif %}
+      </p>
+
+      <div class="auth-switch">
+        <a class="auth-switch-link {% if mode == 'login' %}is-active{% endif %}" href="{% url 'web-login' %}">Вход</a>
+        <a class="auth-switch-link {% if mode == 'register' %}is-active{% endif %}" href="{% url 'web-register' %}">Регистрация</a>
+      </div>
+
+      <form method="post" class="stack-form">
+        {% csrf_token %}
+        {% if form.non_field_errors %}
+          <div class="form-errors">{{ form.non_field_errors }}</div>
+        {% endif %}
+
+        {% for field in form %}
+          <label class="field">
+            <span>{{ field.label }}</span>
+            {{ field }}
+            {% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}
+            {% if field.errors %}<small class="field-error">{{ field.errors|join:", " }}</small>{% endif %}
+          </label>
+        {% endfor %}
+
+        <button class="button button-primary button-block" type="submit">
+          {% if mode == "register" %}Создать аккаунт{% else %}Войти{% endif %}
+        </button>
+      </form>
+    </div>
+  </section>
+{% endblock %}

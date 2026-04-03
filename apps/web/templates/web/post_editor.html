@@ -1,0 +1,42 @@
+{% extends "web/base.html" %}
+
+{% block content %}
+  <section class="panel stack-section">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">Редактор</p>
+        <h3>{{ editor_title }}</h3>
+      </div>
+    </div>
+
+    <form method="post" enctype="multipart/form-data" class="stack-form">
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+        <div class="form-errors">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      <div class="form-grid">
+        {% for field in form %}
+          <label class="field {% if field.name == 'body' %}field-full{% endif %}">
+            <span>{{ field.label }}</span>
+            {{ field }}
+            {% if field.errors %}<small class="field-error">{{ field.errors|join:", " }}</small>{% endif %}
+          </label>
+        {% endfor %}
+      </div>
+
+      {% if editing_post and editing_post.images.all %}
+        <section class="current-images">
+          <h4>Текущие изображения</h4>
+          <div class="current-images-grid">
+            {% for image in editing_post.images.all %}
+              <img src="{{ image.image_url }}" alt="Изображение публикации">
+            {% endfor %}
+          </div>
+        </section>
+      {% endif %}
+
+      <button class="button button-primary" type="submit">Сохранить</button>
+    </form>
+  </section>
+{% endblock %}

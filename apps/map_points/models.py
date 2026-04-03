@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 
 from apps.common.models import TimeStampedModel
@@ -15,6 +16,18 @@ class MapPointCategory(TimeStampedModel):
 
     def __str__(self) -> str:
         return self.title
+
+    @property
+    def priority(self) -> int:
+        from .category_style import get_category_priority
+
+        return get_category_priority(self)
+
+    @property
+    def marker_color(self) -> str:
+        from .category_style import get_category_color
+
+        return get_category_color(self)
 
 
 class MapPoint(TimeStampedModel):
@@ -40,6 +53,17 @@ class MapPoint(TimeStampedModel):
     def __str__(self) -> str:
         return self.title
 
+    @property
+    def ordered_categories(self):
+        from .category_style import sort_categories
+
+        return sort_categories(self.categories.all())
+
+    @property
+    def primary_category_display(self):
+        categories = self.ordered_categories
+        return categories[0] if categories else None
+
 
 class MapPointImage(TimeStampedModel):
     point = models.ForeignKey(
@@ -64,6 +88,13 @@ class MapPointReview(TimeStampedModel):
         on_delete=models.CASCADE,
         related_name="reviews",
     )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="map_point_reviews",
+        blank=True,
+        null=True,
+    )
     author_name = models.CharField(max_length=120)
     rating = models.PositiveSmallIntegerField(default=5)
     body = models.TextField()
@@ -73,3 +104,20 @@ class MapPointReview(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"Review by {self.author_name} for {self.point_id}"
+
+
+class MapPointReviewImage(TimeStampedModel):
+    review = models.ForeignKey(
+        MapPointReview,
+        on_delete=models.CASCADE,
+        related_name="images",
+    )
+    image_url = models.URLField()
+    caption = models.CharField(max_length=140, blank=True)
+    position = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ("position", "id")
+
+    def __str__(self) -> str:
+        return f"Review image #{self.position} for review {self.review_id}"

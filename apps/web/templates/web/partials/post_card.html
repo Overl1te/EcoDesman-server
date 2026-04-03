@@ -1,0 +1,65 @@
+{% load web_tags %}
+<article class="post-card">
+  <header class="post-card-header">
+    <a class="post-author" href="{% url 'web-public-profile' post.author_id %}">
+      <span class="avatar-badge small">
+        {% if post.author.avatar_url %}
+          <img src="{{ post.author.avatar_url }}" alt="{{ post.author.display_name|default:post.author.username }}">
+        {% else %}
+          <span>{{ post.author.display_name|default:post.author.username|slice:':1'|upper }}</span>
+        {% endif %}
+      </span>
+      <span>
+        <strong>{{ post.author.display_name|default:post.author.username }}</strong>
+        <small>@{{ post.author.username }} · {{ post.published_at|date:"d M Y" }}</small>
+      </span>
+    </a>
+    <span class="tag">{{ post.kind|kind_label }}</span>
+  </header>
+
+  <a class="post-card-body" href="{% url 'web-post-detail' post.id %}">
+    {% if post.title %}
+      <h3>{{ post.title }}</h3>
+    {% endif %}
+    <p>{{ post.body|truncatechars:280 }}</p>
+  </a>
+
+  {% with preview_image=post.images.all|first %}
+    {% if preview_image %}
+      <button class="post-image-button" type="button" data-lightbox-trigger="{{ preview_image.image_url }}">
+        <img class="post-image" src="{{ preview_image.image_url }}" alt="{{ post.title|default:'Изображение публикации' }}">
+      </button>
+    {% endif %}
+  {% endwith %}
+
+  <footer class="post-card-footer">
+    <div class="post-metrics">
+      <span>{{ post.likes_count }} лайков</span>
+      <span>{{ post.comments_count }} комментариев</span>
+      <span>{{ post.favorites_count }} в избранном</span>
+      <span>{{ post.view_count }} просмотров</span>
+    </div>
+
+    <div class="post-actions">
+      {% if request.user.is_authenticated %}
+        <form method="post" action="{% url 'web-post-like' post.id %}">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <button class="button button-inline {% if post.is_liked %}button-primary{% else %}button-muted{% endif %}" type="submit">
+            {{ post.is_liked|yesno:"Убрать лайк,Лайк" }}
+          </button>
+        </form>
+        <form method="post" action="{% url 'web-post-favorite' post.id %}">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <button class="button button-inline {% if post.is_favorited %}button-primary{% else %}button-muted{% endif %}" type="submit">
+            {{ post.is_favorited|yesno:"Убрать из избранного,В избранное" }}
+          </button>
+        </form>
+      {% else %}
+        <a class="button button-inline button-muted" href="{% url 'web-login' %}?next={{ request.get_full_path|urlencode }}">Войти для реакций</a>
+      {% endif %}
+      <a class="button button-inline button-ghost" href="{% url 'web-post-detail' post.id %}">Открыть</a>
+    </div>
+  </footer>
+</article>

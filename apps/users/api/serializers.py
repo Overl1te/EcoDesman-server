@@ -65,6 +65,7 @@ class CurrentUserSerializer(serializers.ModelSerializer):
     avatar_url = serializers.SerializerMethodField()
     stats = serializers.SerializerMethodField()
     is_banned = serializers.BooleanField(read_only=True)
+    can_access_admin = serializers.BooleanField(source="is_admin_role", read_only=True)
 
     class Meta:
         model = User
@@ -85,6 +86,7 @@ class CurrentUserSerializer(serializers.ModelSerializer):
             "instagram_url",
             "warning_count",
             "is_banned",
+            "can_access_admin",
             "stats",
         )
 
@@ -101,6 +103,7 @@ class PublicProfileSerializer(serializers.ModelSerializer):
     avatar_url = serializers.SerializerMethodField()
     stats = serializers.SerializerMethodField()
     is_banned = serializers.BooleanField(read_only=True)
+    can_access_admin = serializers.BooleanField(source="is_admin_role", read_only=True)
 
     class Meta:
         model = User
@@ -119,6 +122,7 @@ class PublicProfileSerializer(serializers.ModelSerializer):
             "instagram_url",
             "warning_count",
             "is_banned",
+            "can_access_admin",
             "stats",
         )
 

@@ -1,10 +1,23 @@
 from django.test import TestCase
 from django.urls import reverse
 
-from apps.map_points.models import MapPoint
+from apps.map_points.models import MapPoint, MapPointReview, MapPointReviewImage
+from apps.users.models import User
 
 
 class MapApiTests(TestCase):
+    def login(self, identifier="anna@econizhny.local", password="demo12345") -> str:
+        response = self.client.post(
+            reverse("auth-login"),
+            {
+                "identifier": identifier,
+                "password": password,
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        return response.json()["access"]
+
     def test_map_overview_returns_categories_and_point_summaries(self):
         hidden_point = MapPoint.objects.create(
             slug="hidden-point",
@@ -26,13 +39,31 @@ class MapApiTests(TestCase):
         self.assertGreaterEqual(len(payload["points"]), 5)
         self.assertNotIn(hidden_point.slug, [item["slug"] for item in payload["points"]])
 
+        self.assertIn("color", payload["categories"][0])
+
         first_point = payload["points"][0]
         self.assertIn("categories", first_point)
         self.assertIn("short_description", first_point)
         self.assertIn("cover_image_url", first_point)
+        self.assertIn("primary_category", first_point)
+
+        paper_point = next(item for item in payload["points"] if item["slug"] == "paper")
+        self.assertEqual(paper_point["primary_category"]["slug"], "paper")
+        self.assertEqual(
+            [item["slug"] for item in paper_point["categories"]],
+            ["paper", "pickup"],
+        )
+        self.assertEqual(paper_point["primary_category"]["color"], "#2E6DB4")
 
     def test_map_point_detail_returns_gallery_reviews_and_metadata(self):
         point = MapPoint.objects.get(slug="ecopunkt")
+        review = point.reviews.first()
+        self.assertIsNotNone(review)
+        MapPointReviewImage.objects.create(
+            review=review,
+            image_url="https://example.com/review-photo.jpg",
+            position=0,
+        )
 
         response = self.client.get(
             reverse("map-point-detail", kwargs={"point_id": point.id})
@@ -46,3 +77,66 @@ class MapApiTests(TestCase):
         self.assertGreaterEqual(len(payload["categories"]), 1)
         self.assertTrue(payload["description"])
         self.assertTrue(payload["address"])
+        self.assertEqual(
+            payload["reviews"][0]["images"][0]["image_url"],
+            "https://example.com/review-photo.jpg",
+        )
+        self.assertEqual(payload["primary_category"]["slug"], "eco-center")
+        self.assertEqual(payload["primary_category"]["color"], "#0E7A53")
+
+    def test_authenticated_user_can_create_review_for_point(self):
+        point = MapPoint.objects.get(slug="ecopunkt")
+        access_token = self.login()
+        author = User.objects.get(email="anna@econizhny.local")
+        review_body = "Очень удобная точка, все чисто и понятно."
+
+        response = self.client.post(
+            reverse("map-point-review-create", kwargs={"point_id": point.id}),
+            {
+                "rating": 5,
+                "body": review_body,
+                "image_urls": [
+                    "https://example.com/review-photo-1.jpg",
+                    "https://example.com/review-photo-2.jpg",
+                ],
+            },
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {access_token}",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        self.assertEqual(payload["rating"], 5)
+        self.assertEqual(payload["author_name"], author.display_name)
+        self.assertEqual(len(payload["images"]), 2)
+        self.assertEqual(
+            payload["images"][0]["image_url"],
+            "https://example.com/review-photo-1.jpg",
+        )
+        self.assertTrue(
+            MapPointReview.objects.filter(
+                point=point,
+                body=review_body,
+                author=author,
+            ).exists()
+        )
+        created_review = MapPointReview.objects.get(
+            point=point,
+            body=review_body,
+            author=author,
+        )
+        self.assertEqual(created_review.images.count(), 2)
+
+    def test_review_create_requires_authentication(self):
+        point = MapPoint.objects.get(slug="ecopunkt")
+
+        response = self.client.post(
+            reverse("map-point-review-create", kwargs={"point_id": point.id}),
+            {
+                "rating": 4,
+                "body": "Без входа отзыв не должен создаться.",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 401)

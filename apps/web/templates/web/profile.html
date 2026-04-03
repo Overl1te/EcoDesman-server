@@ -1,0 +1,71 @@
+{% extends "web/base.html" %}
+{% load web_tags %}
+
+{% block topbar_actions %}
+  {% if request.user.is_authenticated and request.user.id == profile_user.id %}
+    <a class="button button-muted" href="{% url 'web-profile-settings' %}">Настройки</a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+  <section class="profile-hero panel">
+    <div class="profile-header">
+      <span class="avatar-badge xl">
+        {% if profile_user.avatar_url %}
+          <img src="{{ profile_user.avatar_url }}" alt="{{ profile_user.display_name|default:profile_user.username }}">
+        {% else %}
+          <span>{{ profile_user.display_name|default:profile_user.username|slice:':1'|upper }}</span>
+        {% endif %}
+      </span>
+
+      <div class="profile-meta">
+        <div class="profile-title-row">
+          <h1>{{ profile_user.display_name|default:profile_user.username }}</h1>
+          <span class="tag soft">{{ profile_user.role|role_label }}</span>
+        </div>
+        <p class="profile-handle">@{{ profile_user.username }}</p>
+        {% if profile_user.status_text %}<p class="profile-status">{{ profile_user.status_text }}</p>{% endif %}
+        {% if profile_user.bio %}<p class="profile-bio">{{ profile_user.bio }}</p>{% endif %}
+        <div class="profile-details">
+          {% if profile_user.city %}<span>📍 {{ profile_user.city }}</span>{% endif %}
+          {% if request.user.is_authenticated and request.user.id == profile_user.id and profile_user.email %}<span>✉️ {{ profile_user.email }}</span>{% endif %}
+          {% if request.user.is_authenticated and request.user.id == profile_user.id and profile_user.phone %}<span>📞 {{ profile_user.phone }}</span>{% endif %}
+        </div>
+        <div class="profile-links">
+          {% if profile_user.website_url %}<a href="{{ profile_user.website_url }}" target="_blank" rel="noreferrer">Сайт</a>{% endif %}
+          {% if profile_user.telegram_url %}<a href="{{ profile_user.telegram_url }}" target="_blank" rel="noreferrer">Telegram</a>{% endif %}
+          {% if profile_user.vk_url %}<a href="{{ profile_user.vk_url }}" target="_blank" rel="noreferrer">VK</a>{% endif %}
+          {% if profile_user.instagram_url %}<a href="{{ profile_user.instagram_url }}" target="_blank" rel="noreferrer">Instagram</a>{% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card"><strong>{{ profile_stats.posts_count }}</strong><span>Посты</span></div>
+      <div class="stat-card"><strong>{{ profile_stats.likes_received_count }}</strong><span>Лайки</span></div>
+      <div class="stat-card"><strong>{{ profile_stats.comments_count }}</strong><span>Комментарии</span></div>
+      <div class="stat-card"><strong>{{ profile_stats.views_received_count }}</strong><span>Просмотры</span></div>
+    </div>
+
+  </section>
+
+  <section class="stack-section">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">Публикации</p>
+        <h3>{% if request.user.is_authenticated and request.user.id == profile_user.id %}Мои публикации{% else %}Посты автора{% endif %}</h3>
+      </div>
+    </div>
+
+    <div class="posts-grid">
+      {% for post in user_posts %}
+        {% include "web/partials/post_card.html" %}
+      {% empty %}
+        <div class="empty-state">
+          <h3>Пока нет публикаций</h3>
+          <p>Здесь появятся посты пользователя, когда он что-то опубликует.</p>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+{% endblock %}

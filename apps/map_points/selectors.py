@@ -1,6 +1,13 @@
 from django.db.models import Prefetch
 
-from .models import MapPoint, MapPointCategory, MapPointImage, MapPointReview
+from .category_style import sort_categories
+from .models import (
+    MapPoint,
+    MapPointCategory,
+    MapPointImage,
+    MapPointReview,
+    MapPointReviewImage,
+)
 
 
 def list_active_map_points():
@@ -9,7 +16,17 @@ def list_active_map_points():
         .prefetch_related("categories")
         .prefetch_related(
             Prefetch("images", queryset=MapPointImage.objects.order_by("position", "id")),
-            Prefetch("reviews", queryset=MapPointReview.objects.order_by("-created_at", "-id")),
+            Prefetch(
+                "reviews",
+                queryset=MapPointReview.objects.select_related("author")
+                .prefetch_related(
+                    Prefetch(
+                        "images",
+                        queryset=MapPointReviewImage.objects.order_by("position", "id"),
+                    )
+                )
+                .order_by("-created_at", "-id"),
+            ),
         )
     )
 
@@ -19,4 +36,4 @@ def get_map_point(point_id: int):
 
 
 def list_map_categories():
-    return MapPointCategory.objects.order_by("sort_order", "title", "id")
+    return sort_categories(MapPointCategory.objects.all())

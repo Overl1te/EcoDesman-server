@@ -1,12 +1,22 @@
 from rest_framework import serializers
 
-from ..models import MapPoint, MapPointCategory, MapPointImage, MapPointReview
+from ..category_style import sort_categories
+from ..models import (
+    MapPoint,
+    MapPointCategory,
+    MapPointImage,
+    MapPointReview,
+    MapPointReviewImage,
+)
 
 
 class MapPointCategorySerializer(serializers.ModelSerializer):
+    sort_order = serializers.IntegerField(source="priority", read_only=True)
+    color = serializers.CharField(source="marker_color", read_only=True)
+
     class Meta:
         model = MapPointCategory
-        fields = ("id", "slug", "title")
+        fields = ("id", "slug", "title", "sort_order", "color")
 
 
 class MapPointImageSerializer(serializers.ModelSerializer):
@@ -15,18 +25,65 @@ class MapPointImageSerializer(serializers.ModelSerializer):
         fields = ("id", "image_url", "caption", "position")
 
 
+class MapPointReviewImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MapPointReviewImage
+        fields = ("id", "image_url", "caption", "position")
+
+
 class MapPointReviewSerializer(serializers.ModelSerializer):
+    author_name = serializers.SerializerMethodField()
     created_at = serializers.DateTimeField()
+    images = serializers.SerializerMethodField()
 
     class Meta:
         model = MapPointReview
-        fields = ("id", "author_name", "rating", "body", "created_at")
+        fields = ("id", "author_name", "rating", "body", "created_at", "images")
+
+    def get_author_name(self, obj: MapPointReview) -> str:
+        if obj.author_name:
+            return obj.author_name
+
+        if obj.author:
+            return obj.author.display_name or obj.author.username
+
+        return "Пользователь"
 
 
-class MapPointSummarySerializer(serializers.ModelSerializer):
+    def get_images(self, obj: MapPointReview):
+        return MapPointReviewImageSerializer(obj.images.all(), many=True).data
+
+
+class MapPointReviewWriteSerializer(serializers.Serializer):
+    rating = serializers.IntegerField(min_value=1, max_value=5)
+    body = serializers.CharField(min_length=3, max_length=2000)
+    image_urls = serializers.ListField(
+        child=serializers.URLField(),
+        required=False,
+        allow_empty=True,
+    )
+
+
+class BaseMapPointSerializer(serializers.ModelSerializer):
     latitude = serializers.FloatField()
     longitude = serializers.FloatField()
-    categories = MapPointCategorySerializer(many=True)
+    categories = serializers.SerializerMethodField()
+    primary_category = serializers.SerializerMethodField()
+
+    def _sorted_categories(self, obj: MapPoint) -> list[MapPointCategory]:
+        return sort_categories(obj.categories.all())
+
+    def get_categories(self, obj: MapPoint):
+        return MapPointCategorySerializer(self._sorted_categories(obj), many=True).data
+
+    def get_primary_category(self, obj: MapPoint):
+        categories = self._sorted_categories(obj)
+        if not categories:
+            return None
+        return MapPointCategorySerializer(categories[0]).data
+
+
+class MapPointSummarySerializer(BaseMapPointSerializer):
     cover_image_url = serializers.SerializerMethodField()
 
     class Meta:
@@ -39,6 +96,7 @@ class MapPointSummarySerializer(serializers.ModelSerializer):
             "latitude",
             "longitude",
             "categories",
+            "primary_category",
             "cover_image_url",
         )
 
@@ -47,10 +105,7 @@ class MapPointSummarySerializer(serializers.ModelSerializer):
         return first_image.image_url if first_image else ""
 
 
-class MapPointDetailSerializer(serializers.ModelSerializer):
-    latitude = serializers.FloatField()
-    longitude = serializers.FloatField()
-    categories = MapPointCategorySerializer(many=True)
+class MapPointDetailSerializer(BaseMapPointSerializer):
     images = MapPointImageSerializer(many=True)
     reviews = MapPointReviewSerializer(many=True)
 
@@ -67,6 +122,7 @@ class MapPointDetailSerializer(serializers.ModelSerializer):
             "latitude",
             "longitude",
             "categories",
+            "primary_category",
             "images",
             "reviews",
         )

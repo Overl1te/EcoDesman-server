@@ -14,3 +14,5 @@ backups/*
 !backups/.gitkeep
 runtime_logs/*
 !runtime_logs/.gitkeep
+runtime_cache/*
+!runtime_cache/.gitkeep

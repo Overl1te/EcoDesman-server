@@ -1,0 +1,135 @@
+{% extends "web/base.html" %}
+
+{% block extra_head %}
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+{% endblock %}
+
+{% block content %}
+  <section class="map-layout">
+    <div class="map-stage panel">
+      <div class="map-toolbar">
+        <div class="chip-row">
+          <a class="chip filter-chip {% if not current_category %}is-active{% endif %}" href="{% url 'web-map' %}">
+            <span class="chip-swatch chip-swatch-neutral" aria-hidden="true"></span>
+            Все точки
+          </a>
+          {% for category in categories %}
+            <a class="chip filter-chip {% if current_category == category.slug %}is-active{% endif %}" href="{% url 'web-map' %}?category={{ category.slug }}" style="--chip-accent: {{ category.marker_color }}">
+              <span class="chip-swatch" aria-hidden="true"></span>
+              {{ category.title }}
+            </a>
+          {% endfor %}
+        </div>
+      </div>
+      <div id="map-view" class="map-canvas"></div>
+      {{ map_points_json|json_script:"map-points-data" }}
+    </div>
+
+    <div class="map-side-column">
+      <section class="panel stack-section">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Подборка точек</p>
+            <h3>Локации на карте</h3>
+          </div>
+        </div>
+        <div class="point-list">
+          {% for point in points %}
+            {% with primary_category=point.primary_category_display %}
+              <a class="point-list-item {% if selected_point and selected_point.id == point.id %}is-active{% endif %}" href="{% url 'web-map' %}?{% if current_category %}category={{ current_category }}&{% endif %}point={{ point.id }}"{% if primary_category %} style="--point-accent: {{ primary_category.marker_color }}"{% endif %}>
+                <div class="point-list-item-heading">
+                  <div class="point-list-item-title">
+                    <span class="point-list-item-dot" aria-hidden="true"></span>
+                    <strong>{{ point.title }}</strong>
+                  </div>
+                  {% if primary_category %}
+                    <span class="point-list-item-category">{{ primary_category.title }}</span>
+                  {% endif %}
+                </div>
+                <p>{{ point.short_description }}</p>
+              </a>
+            {% endwith %}
+          {% empty %}
+            <div class="empty-state compact">
+              <h3>Точек нет</h3>
+              <p>Попробуйте снять фильтр или добавить новые точки на сервере.</p>
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="panel stack-section">
+        {% if selected_point %}
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Точка</p>
+              <h3>{{ selected_point.title }}</h3>
+            </div>
+          </div>
+
+          {% if selected_point.short_description %}<p class="lead-text">{{ selected_point.short_description }}</p>{% endif %}
+
+          {% if selected_point.images.all %}
+            <div class="current-images-grid">
+              {% for image in selected_point.images.all %}
+                <button class="gallery-tile compact" type="button" data-lightbox-trigger="{{ image.image_url }}">
+                  <img src="{{ image.image_url }}" alt="{{ image.caption|default:selected_point.title }}">
+                </button>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          {% if selected_point.description %}<p>{{ selected_point.description }}</p>{% endif %}
+
+          <div class="profile-details">
+            {% if selected_point.address %}<span>📍 {{ selected_point.address }}</span>{% endif %}
+            {% if selected_point.working_hours %}<span>🕒 {{ selected_point.working_hours }}</span>{% endif %}
+            <span>🧭 {{ selected_point.latitude }}, {{ selected_point.longitude }}</span>
+          </div>
+
+          {% if selected_point.ordered_categories %}
+            <div class="chip-row">
+              {% for category in selected_point.ordered_categories %}
+                <span class="chip static category-chip" style="--chip-accent: {{ category.marker_color }}">
+                  <span class="chip-swatch" aria-hidden="true"></span>
+                  {{ category.title }}
+                </span>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          <div class="section-heading narrow">
+            <h4>Отзывы</h4>
+            <button class="button button-inline button-muted" type="button" onclick="alert('Форма добавления отзыва появится позже.')">Добавить отзыв</button>
+          </div>
+          <div class="comment-list">
+            {% for review in selected_point.reviews.all %}
+              <article class="comment-card">
+                <header>
+                  <strong>{{ review.author_name }}</strong>
+                  <span>{{ review.created_at|date:"d M Y" }}</span>
+                </header>
+                <p>★ {{ review.rating }}/5</p>
+                <p>{{ review.body }}</p>
+              </article>
+            {% empty %}
+              <div class="empty-state compact">
+                <h3>Пока нет отзывов</h3>
+                <p>Станьте первым, кто поделится впечатлениями об этой точке.</p>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="empty-state compact">
+            <h3>Точка не выбрана</h3>
+            <p>Нажмите на маркер на карте или выберите локацию из списка.</p>
+          </div>
+        {% endif %}
+      </section>
+    </div>
+  </section>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+{% endblock %}

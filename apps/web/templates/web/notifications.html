@@ -1,0 +1,30 @@
+{% extends "web/base.html" %}
+
+{% block topbar_actions %}
+  <form method="post" action="{% url 'web-notifications-read-all' %}">
+    {% csrf_token %}
+    <button class="button button-muted" type="submit">Отметить все прочитанным</button>
+  </form>
+{% endblock %}
+
+{% block content %}
+  <section class="stack-section">
+    {% for notification in notifications %}
+      <article class="notification-card {% if not notification.is_read %}is-unread{% endif %}">
+        <div class="notification-meta">
+          <p class="eyebrow">{{ notification.created_at|date:"d M Y H:i" }}</p>
+          <h3>{{ notification.title }}</h3>
+          <p>{{ notification.body }}</p>
+        </div>
+        {% if notification.post_id %}
+          <a class="button button-inline button-muted" href="{% url 'web-post-detail' notification.post_id %}">Открыть пост</a>
+        {% endif %}
+      </article>
+    {% empty %}
+      <div class="empty-state">
+        <h3>Уведомлений пока нет</h3>
+        <p>Когда на ваши публикации начнут реагировать, все события появятся здесь.</p>
+      </div>
+    {% endfor %}
+  </section>
+{% endblock %}

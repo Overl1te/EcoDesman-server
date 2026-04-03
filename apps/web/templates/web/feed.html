@@ -1,0 +1,65 @@
+{% extends "web/base.html" %}
+
+{% block topbar_actions %}
+  <form class="topbar-search" method="get">
+    {% if ordering %}<input type="hidden" name="ordering" value="{{ ordering }}">{% endif %}
+    {% if event_scope %}<input type="hidden" name="event_scope" value="{{ event_scope }}">{% endif %}
+    {% if has_images %}<input type="hidden" name="has_images" value="1">{% endif %}
+    <span class="material-symbols-rounded">search</span>
+    <input type="search" name="search" value="{{ search_query }}" placeholder="Поиск публикаций и авторов">
+  </form>
+  {% if request.user.is_authenticated %}
+    <a class="button button-muted" href="{% url 'web-notifications' %}">
+      Уведомления{% if web_unread_count %} · {{ web_unread_count }}{% endif %}
+    </a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+  <section class="panel">
+    <form class="toolbar toolbar-grid" method="get">
+      {% if search_query %}<input type="hidden" name="search" value="{{ search_query }}">{% endif %}
+
+      <label class="field compact">
+        <span>Сортировка</span>
+        <select name="ordering">
+          <option value="recommended" {% if ordering == "recommended" %}selected{% endif %}>Рекомендации</option>
+          <option value="recent" {% if ordering == "recent" %}selected{% endif %}>Сначала новые</option>
+          <option value="popular" {% if ordering == "popular" %}selected{% endif %}>Популярные</option>
+        </select>
+      </label>
+
+      {% if is_events_page %}
+        <label class="field compact">
+          <span>Когда</span>
+          <select name="event_scope">
+            <option value="all" {% if event_scope == "all" %}selected{% endif %}>Все</option>
+            <option value="today" {% if event_scope == "today" %}selected{% endif %}>Сегодня</option>
+            <option value="week" {% if event_scope == "week" %}selected{% endif %}>На неделе</option>
+            <option value="upcoming" {% if event_scope == "upcoming" %}selected{% endif %}>Будущие</option>
+          </select>
+        </label>
+      {% endif %}
+
+      <label class="toggle-field">
+        <input type="checkbox" name="has_images" value="1" {% if has_images %}checked{% endif %}>
+        <span>Только с фото</span>
+      </label>
+
+      <button class="button button-primary" type="submit">Применить</button>
+    </form>
+  </section>
+
+  <section class="posts-feed">
+    {% for post in page_obj %}
+      {% include "web/partials/post_card.html" %}
+    {% empty %}
+      <div class="empty-state">
+        <h3>Пока ничего нет</h3>
+        <p>Попробуйте изменить фильтры или зайдите чуть позже.</p>
+      </div>
+    {% endfor %}
+  </section>
+
+  {% include "web/partials/pagination.html" %}
+{% endblock %}

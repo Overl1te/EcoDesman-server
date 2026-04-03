@@ -1,168 +1,210 @@
 # ЭкоВыхухоль Server
 
-Django API for the `ЭкоВыхухоль` mobile client.
+Django backend для `ЭкоВыхухоль`. Веб-клиент живет отдельно на Next.js, а этот репозиторий отвечает за API, админку, авторизацию, загрузки, бэкапы и production-стек.
 
-## Implemented
+## API
 
-- JWT auth: `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`, `GET/PATCH /api/v1/auth/me`
-- public profiles: `GET /api/v1/profiles/{id}`
-- posts feed with pagination and author filter: `GET /api/v1/posts`, `GET /api/v1/posts?author_id={id}`
-- post details with comments, likes, and views: `GET /api/v1/posts/{id}`
-- post creation and editing: `POST /api/v1/posts`, `PATCH /api/v1/posts/{id}`, `DELETE /api/v1/posts/{id}`
-- likes: `POST /api/v1/posts/{id}/like`, `DELETE /api/v1/posts/{id}/like`
-- comments: `GET/POST /api/v1/posts/{id}/comments`
-- healthcheck: `GET /api/v1/health/`
-- roles: `admin`, `moderator`, `user`
+- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/refresh`
+- `POST /api/v1/auth/register`
+- `GET/PATCH /api/v1/auth/me`
+- `GET /api/v1/profiles/{id}`
+- `GET /api/v1/posts`
+- `GET /api/v1/posts/{id}`
+- `POST /api/v1/posts`
+- `PATCH /api/v1/posts/{id}`
+- `DELETE /api/v1/posts/{id}`
+- `POST /api/v1/posts/{id}/like`
+- `DELETE /api/v1/posts/{id}/like`
+- `GET/POST /api/v1/posts/{id}/comments`
+- `GET /api/v1/map/overview`
+- `GET /api/v1/notifications`
+- `GET /api/v1/health/`
 
-## Docker-first Run
+## Production Stack
 
-The server is expected to be started via Docker Compose.
+Production запускается из этого репозитория одним `docker compose`, но собирает сразу весь стек:
+
+- `db`: PostgreSQL
+- `web`: Django API
+- `frontend`: Next.js из соседнего репозитория `../eco-desman-web`
+- `proxy`: Nginx reverse proxy
+- `backup`: ежедневные backup-задачи
+
+Схема роутинга:
+
+- `http://SERVER_IP/` -> Next.js
+- `http://SERVER_IP/api/v1/...` -> Django API
+- `http://SERVER_IP/admin` -> кастомная Next.js админка
+- `http://SERVER_IP/django-admin/` -> встроенная Django admin
+- `https://example.com` -> Next.js
+- `https://example.com/admin` -> кастомная Next.js админка
+- `https://api.example.com` -> Django API
+- `https://api.example.com/django-admin/` -> встроенная Django admin
+
+Поддомены начинают работать после того, как DNS будет указывать на VPS.
+
+## Local Docker Run
 
 ```bash
 docker compose up --build -d
 docker compose ps
 ```
 
-Stop it with:
+Остановка:
 
 ```bash
 docker compose down
 ```
 
-If you also want to remove the Postgres volume:
+С удалением БД:
 
 ```bash
 docker compose down -v
 ```
 
-Runtime logs are written into:
+Проверка:
 
-- `./runtime_logs/gunicorn_access.log`
-- `./runtime_logs/gunicorn_error.log`
-- `./runtime_logs/django.log`
-- `./runtime_logs/django.error.log`
-- `./runtime_logs/backup.log`
+```bash
+curl http://127.0.0.1:8000/api/v1/health/
+curl http://127.0.0.1:8000/
+```
 
 ## Environment
 
-Compose already provides defaults for local development:
+Основной env-файл лежит здесь:
 
-- `POSTGRES_DB=econizhny`
-- `POSTGRES_USER=econizhny`
-- `POSTGRES_PASSWORD=econizhny`
-- `WEB_PORT=8000`
-- `DJANGO_ALLOWED_HOSTS=127.0.0.1,localhost,0.0.0.0`
+- `~/EcoDesman-server/.env`
 
-Override them through shell env vars or a `.env` file before `docker compose up`.
+Шаблон:
+
+- [`.env.production.example`](C:/Users/maksi/Documents/GitHub/EcoDesman-server/.env.production.example)
+
+Ключевые переменные для split `site + api`:
+
+- `SITE_DOMAIN=example.com`
+- `API_DOMAIN=api.example.com`
+- `NEXT_PUBLIC_API_BASE_URL=https://api.example.com/api/v1`
+- `DJANGO_ALLOWED_HOSTS=...,api.example.com`
+- `DJANGO_CSRF_TRUSTED_ORIGINS=...,https://api.example.com`
+- `DJANGO_CORS_ALLOWED_ORIGINS=...,https://example.com,https://www.example.com`
+
+Для дебага compose также публикует внутренние сервисы только на localhost:
+
+- `API_BIND_PORT=18000`
+- `FRONTEND_BIND_PORT=13000`
+
+Публичный reverse proxy наружу отдается через:
+
+- `WEB_PORT=80`
+
+## DNS
+
+Минимум для поддоменов:
+
+1. `A @ -> 130.49.150.192`
+2. `A api -> 130.49.150.192`
+3. `A www -> 130.49.150.192` или `CNAME www -> @`
+
+Пока DNS не настроен, сайт все равно доступен по IP:
+
+- `http://130.49.150.192/`
+- `http://130.49.150.192/api/v1/health/`
 
 ## S3 Media Storage
 
-Media uploads can be switched from the local `/media` volume to an S3-compatible bucket.
-
-Set these env vars in `.env`:
+Для S3:
 
 - `DJANGO_USE_S3_MEDIA=true`
 - `DJANGO_SERVE_MEDIA=false`
-- `AWS_STORAGE_BUCKET_NAME=<bucket-name>`
-- `AWS_S3_ENDPOINT_URL=<s3-endpoint-with-scheme>`
+- `AWS_STORAGE_BUCKET_NAME=<bucket>`
+- `AWS_S3_ENDPOINT_URL=<endpoint>`
 - `AWS_S3_ACCESS_KEY_ID=<access-key>`
 - `AWS_S3_SECRET_ACCESS_KEY=<secret-key>`
 
-Optional:
-
-- `AWS_S3_CUSTOM_DOMAIN=<public-bucket-domain>`
-- `AWS_S3_ADDRESSING_STYLE=virtual` or `path`
-- `AWS_S3_VERIFY=/usr/lib/ssl/cert.pem` for S3-compatible endpoints that need the system CA bundle inside Docker
-- `AWS_QUERYSTRING_AUTH=false` for public media
-- `AWS_DEFAULT_ACL=public-read` or `AWS_S3_OBJECT_ACL=public-read` if your bucket policy requires object ACLs
-- `AWS_LOCATION=uploads` if you want a prefix for all media objects
-
-For REG.RU S3 the safer default is:
+Для REG.RU S3:
 
 - `AWS_S3_ADDRESSING_STYLE=path`
 - `AWS_S3_VERIFY=/usr/lib/ssl/cert.pem`
-- leave `AWS_S3_CUSTOM_DOMAIN` empty until the public bucket URL is verified
-- make the bucket publicly readable if you expect plain image URLs from the API
+- `AWS_QUERYSTRING_AUTH=false`
+- `AWS_S3_OBJECT_ACL=public-read`
+
+## Logs
+
+Логи пишутся в:
+
+- `./runtime_logs/django.log`
+- `./runtime_logs/django.error.log`
+- `./runtime_logs/gunicorn_access.log`
+- `./runtime_logs/gunicorn_error.log`
+- `./runtime_logs/nginx_access.log`
+- `./runtime_logs/nginx_error.log`
+- `./runtime_logs/backup.log`
 
 ## Daily Backups
 
-Compose now also starts a `backup` service.
+`backup` service:
 
-What it does:
+- делает ежедневный dump PostgreSQL
+- архивирует `runtime_logs`
+- грузит backup и архив логов в S3
+- чистит старые локальные и удаленные архивы
 
-- creates a PostgreSQL dump once per day
-- archives the current runtime logs
-- uploads both archives to S3
-- deletes old local and remote archives by retention period
-
-Config:
+Настройки:
 
 - `BACKUP_TIMEZONE=Europe/Moscow`
 - `BACKUP_SCHEDULE_HOUR=3`
 - `BACKUP_SCHEDULE_MINUTE=0`
 - `BACKUP_RETENTION_DAYS=7`
 - `BACKUP_S3_PREFIX=ops`
-- `BACKUP_S3_BUCKET_NAME=` if backups should go to another bucket
+- `BACKUP_S3_BUCKET_NAME=`
 - `BACKUP_RUN_ON_START=false`
 
-Local files:
+Локальные backup-файлы:
 
 - `./backups/db/*.dump`
 - `./backups/logs/*.tar.gz`
 
-Manual restore:
+Восстановление:
 
 ```bash
 ./restore_db.sh ops/db/econizhny-20260402-030000.dump
 ```
 
-You can also pass a local file path instead of an S3 key.
-
-When S3 is enabled, upload URLs are returned from the storage backend directly instead of local `/media/...` URLs.
+Можно передать и локальный путь к `.dump`.
 
 ## VPS Deploy
 
-Target server:
+На сервере должны лежать оба репозитория:
 
-- Ubuntu
-- IP: `130.49.150.192`
-- repo: `git@github.com:Overl1te/EcoNizhny-server.git`
+- `~/EcoDesman-server`
+- `~/eco-desman-web`
 
-There is a standalone deploy script prepared for `~/deploy_econizhny_server.sh`:
+Deploy-скрипт:
 
-- `deploy_econizhny_server.sh`
+- [deploy_econizhny_server.sh](C:/Users/maksi/Documents/GitHub/deploy_econizhny_server.sh)
 
-What it does:
+Что делает:
 
-- installs `git`, Docker Engine and Docker Compose plugin
-- expects the repo to already exist in `~/EcoNizhny-server`
-- updates the existing checkout with `git fetch` + `git pull`
-- creates `~/EcoNizhny-server/.env` if it does not exist
-- builds and starts the stack with `docker compose up --build -d`
-- waits for `http://127.0.0.1/api/v1/health/`
+- ставит Docker
+- обновляет оба git checkout
+- создает `~/EcoDesman-server/.env`, если файла еще нет
+- синхронизирует доменные env-настройки
+- поднимает `db + web + frontend + proxy + backup`
+- ждет `API` и `frontend`
 
-If `~/EcoNizhny-server` is missing or is not a git repo, the script will stop and ask you to clone the repo there first.
+Запуск:
 
-Environment template for production:
-
-- `.env.production.example`
-
-## Demo Accounts
-
-- `anna@econizhny.local` / `demo12345`
-- `ivan@econizhny.local` / `demo12345`
-- `admin@econizhny.local` / `demo12345`
+```bash
+chmod +x ~/deploy_econizhny_server.sh
+~/deploy_econizhny_server.sh
+```
 
 ## Verification
 
 ```bash
+python manage.py check
 python manage.py test
 docker compose config
 docker compose up --build -d
-```
-
-After startup:
-
-```bash
-curl http://127.0.0.1:8000/api/v1/health/
 ```

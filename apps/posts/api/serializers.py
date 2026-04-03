@@ -86,6 +86,7 @@ class PostListSerializer(serializers.ModelSerializer):
             "preview_text",
             "kind",
             "published_at",
+            "is_published",
             "author",
             "preview_image_url",
             "likes_count",

@@ -1,0 +1,11 @@
+{% if page_obj.paginator.num_pages > 1 %}
+  <nav class="pagination">
+    {% if page_obj.has_previous %}
+      <a class="button button-muted" href="?page={{ page_obj.previous_page_number }}{% if request.GET.search %}&search={{ request.GET.search|urlencode }}{% endif %}{% if request.GET.ordering %}&ordering={{ request.GET.ordering }}{% endif %}{% if request.GET.event_scope %}&event_scope={{ request.GET.event_scope }}{% endif %}{% if request.GET.has_images %}&has_images={{ request.GET.has_images }}{% endif %}">Назад</a>
+    {% endif %}
+    <span>Страница {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</span>
+    {% if page_obj.has_next %}
+      <a class="button button-muted" href="?page={{ page_obj.next_page_number }}{% if request.GET.search %}&search={{ request.GET.search|urlencode }}{% endif %}{% if request.GET.ordering %}&ordering={{ request.GET.ordering }}{% endif %}{% if request.GET.event_scope %}&event_scope={{ request.GET.event_scope }}{% endif %}{% if request.GET.has_images %}&has_images={{ request.GET.has_images }}{% endif %}">Дальше</a>
+    {% endif %}
+  </nav>
+{% endif %}
