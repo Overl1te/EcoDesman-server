@@ -23,6 +23,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      network: ${BACKEND_BUILD_NETWORK:-default}
       args:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
         PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
@@ -148,6 +149,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      network: ${BACKEND_BUILD_NETWORK:-default}
       args:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
         PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
