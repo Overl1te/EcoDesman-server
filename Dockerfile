@@ -1,21 +1,18 @@
-FROM python:3.12-slim-bookworm
+FROM python:3.12-slim-bookworm AS python-runtime
+
+FROM postgres:16-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
+# Reuse the official Python runtime on top of the PostgreSQL image so the
+# container has both Python and pg_dump/pg_restore without apt-get at build time.
+COPY --from=python-runtime /usr/local /usr/local
+
 COPY requirements ./requirements
-RUN if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
-        sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources; \
-    fi \
-    && if [ -f /etc/apt/sources.list ]; then \
-        sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list; \
-    fi \
-    && apt-get -o Acquire::Retries=5 -o Acquire::https::Timeout=30 update \
-    && apt-get install -y --no-install-recommends ca-certificates postgresql-client \
-    && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir -r requirements/base.txt
+RUN pip install --no-cache-dir -r requirements/base.txt
 
 COPY . .
 
