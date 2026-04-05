@@ -1,11 +1,18 @@
+import calendar
+from datetime import date
+
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.support.api.serializers import ContentReportSerializer, ContentReportWriteSerializer
+from apps.support.models import ContentReport
+from apps.support.services import create_content_report
+
 from ..models import Post, PostComment
-from ..selectors import get_post, list_comments, list_posts
+from ..selectors import get_post, list_comments, list_event_calendar_posts, list_posts
 from ..services import (
     add_comment,
     can_edit_comment,
@@ -14,6 +21,7 @@ from ..services import (
     favorite_post,
     increment_post_view,
     like_post,
+    set_event_cancellation,
     unfavorite_post,
     unlike_post,
     update_post,
@@ -25,6 +33,7 @@ from .serializers import (
     LikeStateSerializer,
     PostCommentSerializer,
     PostDetailSerializer,
+    EventCalendarEntrySerializer,
     PostListSerializer,
     PostWriteSerializer,
 )
@@ -97,7 +106,11 @@ class PostDetailView(APIView):
         if not can_edit_post(request.user, post):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
-        serializer = PostWriteSerializer(data=request.data, partial=True)
+        serializer = PostWriteSerializer(
+            data=request.data,
+            partial=True,
+            context={"post": post},
+        )
         serializer.is_valid(raise_exception=True)
         update_post(post=post, validated_data=serializer.validated_data)
         post = get_object_or_404(get_post(post_id, viewer=request.user))
@@ -175,6 +188,84 @@ class PostFavoriteView(APIView):
         )
 
 
+class EventCalendarView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        today = date.today()
+        raw_year = request.query_params.get("year")
+        raw_month = request.query_params.get("month")
+
+        try:
+            year = int(raw_year) if raw_year else today.year
+            month = int(raw_month) if raw_month else today.month
+        except ValueError:
+            return Response(
+                {"detail": "year and month must be integers"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if month < 1 or month > 12:
+            return Response(
+                {"detail": "month must be between 1 and 12"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        month_start = date(year, month, 1)
+        month_end = date(year, month, calendar.monthrange(year, month)[1])
+        events = list_event_calendar_posts(
+            start_date=month_start,
+            end_date=month_end,
+            viewer=request.user,
+        )
+        serializer = EventCalendarEntrySerializer(
+            events,
+            many=True,
+            context={"request": request},
+        )
+        return Response(
+            {
+                "year": year,
+                "month": month,
+                "starts_on": month_start.isoformat(),
+                "ends_on": month_end.isoformat(),
+                "events": serializer.data,
+            }
+        )
+
+
+class PostEventCancellationView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, post_id: int):
+        post = get_object_or_404(Post, id=post_id, is_published=True)
+        if not can_edit_post(request.user, post):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        if post.kind != Post.Kind.EVENT:
+            return Response(
+                {"detail": "Only event posts can be cancelled"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        set_event_cancellation(post=post, actor=request.user, is_cancelled=True)
+        post = get_object_or_404(get_post(post_id, viewer=request.user))
+        return Response(PostDetailSerializer(post, context={"request": request}).data)
+
+    def delete(self, request, post_id: int):
+        post = get_object_or_404(Post, id=post_id, is_published=True)
+        if not can_edit_post(request.user, post):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        if post.kind != Post.Kind.EVENT:
+            return Response(
+                {"detail": "Only event posts can be cancelled"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        set_event_cancellation(post=post, actor=request.user, is_cancelled=False)
+        post = get_object_or_404(get_post(post_id, viewer=request.user))
+        return Response(PostDetailSerializer(post, context={"request": request}).data)
+
+
 class PostCommentListCreateView(APIView):
     def get_permissions(self):
         if self.request.method == "POST":
@@ -223,3 +314,57 @@ class PostCommentDetailView(APIView):
             return Response(status=status.HTTP_403_FORBIDDEN)
         comment.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class PostReportView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, post_id: int):
+        post = get_object_or_404(Post, id=post_id)
+        serializer = ContentReportWriteSerializer(
+            data={
+                **request.data,
+                "target_type": ContentReport.TargetType.POST,
+                "target_id": post.id,
+            }
+        )
+        serializer.is_valid(raise_exception=True)
+        report = create_content_report(
+            reporter=request.user,
+            target_type=ContentReport.TargetType.POST,
+            target=post,
+            target_snapshot=post.title or f"Пост #{post.id}",
+            reason=serializer.validated_data["reason"],
+            details=serializer.validated_data.get("details", ""),
+        )
+        return Response(
+            ContentReportSerializer(report, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class PostCommentReportView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, post_id: int, comment_id: int):
+        comment = get_object_or_404(PostComment, id=comment_id, post_id=post_id)
+        serializer = ContentReportWriteSerializer(
+            data={
+                **request.data,
+                "target_type": ContentReport.TargetType.COMMENT,
+                "target_id": comment.id,
+            }
+        )
+        serializer.is_valid(raise_exception=True)
+        report = create_content_report(
+            reporter=request.user,
+            target_type=ContentReport.TargetType.COMMENT,
+            target=comment,
+            target_snapshot=comment.body[:80],
+            reason=serializer.validated_data["reason"],
+            details=serializer.validated_data.get("details", ""),
+        )
+        return Response(
+            ContentReportSerializer(report, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )

@@ -75,6 +75,10 @@ def create_user_account(
     password: str,
     display_name: str = "",
     phone: str | None = None,
+    accept_terms: bool,
+    accept_privacy_policy: bool,
+    accept_personal_data: bool,
+    accept_public_personal_data_distribution: bool = False,
 ) -> User:
     normalized_username = normalize_username(username)
     normalized_email = normalize_email(email)
@@ -88,12 +92,20 @@ def create_user_account(
     )
     validate_password(password, user=temp_user)
 
+    accepted_at = timezone.now()
+
     user = User.objects.create_user(
         username=normalized_username,
         email=normalized_email,
         password=password,
         display_name=display_name.strip(),
         phone=normalized_phone,
+        terms_accepted_at=accepted_at if accept_terms else None,
+        privacy_policy_accepted_at=accepted_at if accept_privacy_policy else None,
+        personal_data_consent_accepted_at=accepted_at if accept_personal_data else None,
+        public_personal_data_consent_accepted_at=(
+            accepted_at if accept_public_personal_data_distribution else None
+        ),
     )
     if not user.display_name:
         user.display_name = user.username
@@ -107,6 +119,10 @@ def can_manage_posts(user) -> bool:
 
 def can_administrate(user) -> bool:
     return bool(user and user.is_authenticated and user.is_admin_role)
+
+
+def can_access_support(user) -> bool:
+    return bool(user and user.is_authenticated and user.can_access_support)
 
 
 def blacklist_refresh_token(refresh_token: str) -> None:

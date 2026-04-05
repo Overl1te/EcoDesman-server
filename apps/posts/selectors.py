@@ -86,19 +86,16 @@ def _apply_event_scope(queryset: QuerySet[Post], event_scope: str | None) -> Que
     if not normalized_scope or normalized_scope == "all":
         return queryset
 
-    current_timezone = timezone.get_current_timezone()
-    now = timezone.now()
     today = timezone.localdate()
-    today_start = timezone.make_aware(datetime.combine(today, time.min), current_timezone)
-    tomorrow_start = today_start + timedelta(days=1)
-    week_end = today_start + timedelta(days=7)
+    tomorrow = today + timedelta(days=1)
+    week_end = today + timedelta(days=7)
 
     if normalized_scope == "today":
-        return queryset.filter(event_starts_at__gte=today_start, event_starts_at__lt=tomorrow_start)
+        return queryset.filter(event_date=today)
     if normalized_scope == "week":
-        return queryset.filter(event_starts_at__gte=today_start, event_starts_at__lt=week_end)
+        return queryset.filter(event_date__gte=today, event_date__lt=week_end)
     if normalized_scope == "upcoming":
-        return queryset.filter(event_starts_at__gte=now)
+        return queryset.filter(event_date__gte=today)
     return queryset
 
 
@@ -138,8 +135,9 @@ def _with_recommendation_annotations(queryset: QuerySet[Post], viewer) -> QueryS
             output_field=IntegerField(),
         ),
         event_score=Case(
-            When(kind=Post.Kind.EVENT, event_starts_at__gte=now, then=Value(24)),
-            When(kind=Post.Kind.EVENT, event_starts_at__lt=now, then=Value(-12)),
+            When(kind=Post.Kind.EVENT, is_event_cancelled=True, then=Value(-18)),
+            When(kind=Post.Kind.EVENT, event_date__gte=timezone.localdate(), then=Value(24)),
+            When(kind=Post.Kind.EVENT, event_date__lt=timezone.localdate(), then=Value(-12)),
             default=Value(0),
             output_field=IntegerField(),
         ),
@@ -325,6 +323,21 @@ def _with_recommendation_annotations(queryset: QuerySet[Post], viewer) -> QueryS
             output_field=IntegerField(),
         )
     )
+
+
+def list_event_calendar_posts(*, start_date, end_date, viewer=None) -> QuerySet[Post]:
+    queryset = (
+        Post.objects.filter(
+            is_published=True,
+            kind=Post.Kind.EVENT,
+            event_date__gte=start_date,
+            event_date__lte=end_date,
+        )
+        .select_related("author")
+        .prefetch_related("images")
+        .order_by("event_date", "event_starts_at", "id")
+    )
+    return _with_post_annotations(queryset, viewer)
 
 
 def list_posts(

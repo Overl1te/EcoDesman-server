@@ -98,9 +98,12 @@ class PostListSerializer(serializers.ModelSerializer):
             "has_images",
             "is_owner",
             "can_edit",
+            "event_date",
             "event_starts_at",
             "event_ends_at",
             "event_location",
+            "is_event_cancelled",
+            "event_cancelled_at",
         )
 
     def get_preview_text(self, obj: Post) -> str:
@@ -153,9 +156,12 @@ class PostDetailSerializer(serializers.ModelSerializer):
             "is_owner",
             "can_edit",
             "is_published",
+            "event_date",
             "event_starts_at",
             "event_ends_at",
             "event_location",
+            "is_event_cancelled",
+            "event_cancelled_at",
         )
 
     def get_is_owner(self, obj: Post) -> bool:
@@ -177,29 +183,62 @@ class PostWriteSerializer(serializers.Serializer):
         required=False,
         allow_empty=True,
     )
+    event_date = serializers.DateField(required=False, allow_null=True)
     event_starts_at = serializers.DateTimeField(required=False, allow_null=True)
     event_ends_at = serializers.DateTimeField(required=False, allow_null=True)
     event_location = serializers.CharField(required=False, allow_blank=True, max_length=200)
+    is_event_cancelled = serializers.BooleanField(required=False)
 
     def validate(self, attrs: dict) -> dict:
-        kind = attrs.get("kind")
+        instance = self.context.get("post")
+        kind = attrs.get("kind") or getattr(instance, "kind", None)
         if kind == Post.Kind.EVENT:
+            event_date = attrs.get("event_date")
             start = attrs.get("event_starts_at")
             end = attrs.get("event_ends_at")
-            location = attrs.get("event_location", "").strip()
-            if start is None:
+            if event_date is None and start is not None:
+                event_date = start.date()
+                attrs["event_date"] = event_date
+            if event_date is None:
+                event_date = getattr(instance, "event_date", None)
+            if event_date is None:
                 raise serializers.ValidationError(
-                    {"event_starts_at": "event_starts_at is required for events"}
+                    {"event_date": "event_date is required for events"}
                 )
-            if end is not None and end < start:
+            if start is not None and end is not None and end < start:
                 raise serializers.ValidationError(
                     {"event_ends_at": "event_ends_at must be after event_starts_at"}
                 )
-            if not location:
-                raise serializers.ValidationError(
-                    {"event_location": "event_location is required for events"}
-                )
+        else:
+            attrs["event_date"] = None
+            attrs["is_event_cancelled"] = False
         return attrs
+
+
+class EventCalendarEntrySerializer(serializers.ModelSerializer):
+    author = PostAuthorSerializer(read_only=True)
+    can_edit = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Post
+        fields = (
+            "id",
+            "title",
+            "body",
+            "kind",
+            "author",
+            "event_date",
+            "event_starts_at",
+            "event_ends_at",
+            "event_location",
+            "is_event_cancelled",
+            "event_cancelled_at",
+            "can_edit",
+        )
+
+    def get_can_edit(self, obj: Post) -> bool:
+        request = self.context.get("request")
+        return bool(request and can_edit_post(request.user, obj))
 
 
 class CommentWriteSerializer(serializers.Serializer):

@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -5,7 +6,6 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.views import TokenRefreshView
 
 from ..models import User
 from ..selectors import search_users
@@ -20,6 +20,7 @@ from ..services import (
     unban_user,
     update_user_role,
 )
+from .cookies import clear_auth_cookies, set_auth_cookies
 from .serializers import (
     ChangePasswordSerializer,
     CurrentUserSerializer,
@@ -35,13 +36,24 @@ from .serializers import (
 )
 
 
-def build_auth_response(*, user: User, request) -> dict:
+def build_auth_payload(*, user: User, request) -> dict:
     refresh = RefreshToken.for_user(user)
     return {
         "access": str(refresh.access_token),
         "refresh": str(refresh),
         "user": CurrentUserSerializer(user, context={"request": request}).data,
     }
+
+
+def build_auth_response(*, user: User, request, status_code: int = status.HTTP_200_OK) -> Response:
+    payload = build_auth_payload(user=user, request=request)
+    response = Response(payload, status=status_code)
+    set_auth_cookies(
+        response,
+        access_token=payload["access"],
+        refresh_token=payload["refresh"],
+    )
+    return response
 
 
 class LoginView(APIView):
@@ -67,7 +79,7 @@ class LoginView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
-        return Response(build_auth_response(user=user, request=request))
+        return build_auth_response(user=user, request=request)
 
 
 class RegisterView(APIView):
@@ -77,27 +89,55 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-        return Response(
-            build_auth_response(user=user, request=request),
-            status=status.HTTP_201_CREATED,
+        return build_auth_response(
+            user=user,
+            request=request,
+            status_code=status.HTTP_201_CREATED,
         )
 
+class RefreshView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
 
-class RefreshView(TokenRefreshView):
-    serializer_class = SafeTokenRefreshSerializer
+    def post(self, request):
+        refresh_token = request.data.get("refresh") or request.COOKIES.get(
+            settings.AUTH_REFRESH_COOKIE_NAME,
+        )
+        if not refresh_token:
+            return Response(
+                {"detail": "Refresh token is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = SafeTokenRefreshSerializer(data={"refresh": refresh_token})
+        serializer.is_valid(raise_exception=True)
+
+        token_payload = serializer.validated_data
+        response = Response(token_payload)
+        set_auth_cookies(
+            response,
+            access_token=token_payload["access"],
+            refresh_token=token_payload.get("refresh", refresh_token),
+        )
+        return response
 
 
 class LogoutView(APIView):
     permission_classes = [AllowAny]
+    authentication_classes = []
 
     def post(self, request):
-        serializer = LogoutSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        refresh_token = request.data.get("refresh") or request.COOKIES.get(
+            settings.AUTH_REFRESH_COOKIE_NAME,
+        )
         try:
-            blacklist_refresh_token(serializer.validated_data["refresh"])
+            if refresh_token:
+                blacklist_refresh_token(refresh_token)
         except TokenError as error:
             raise InvalidToken(str(error)) from error
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        response = Response(status=status.HTTP_204_NO_CONTENT)
+        clear_auth_cookies(response)
+        return response
 
 
 class PasswordResetRequestView(APIView):
@@ -132,7 +172,7 @@ class ChangePasswordView(APIView):
         blacklist_user_refresh_tokens(request.user)
         request.user.refresh_from_db()
 
-        return Response(build_auth_response(user=request.user, request=request))
+        return build_auth_response(user=request.user, request=request)
 
 
 class MeView(APIView):

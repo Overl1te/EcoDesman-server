@@ -10,6 +10,8 @@ def create_notification(
     body: str,
     post=None,
     comment=None,
+    support_thread=None,
+    report=None,
 ) -> Notification | None:
     if not recipient or not actor or recipient.id == actor.id:
         return None
@@ -22,5 +24,6 @@ def create_notification(
         body=body,
         post=post,
         comment=comment,
+        support_thread=support_thread,
+        report=report,
     )
-

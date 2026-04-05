@@ -7,6 +7,7 @@ from apps.common.models import TimeStampedModel
 class User(AbstractUser, TimeStampedModel):
     class Role(models.TextChoices):
         ADMIN = "admin", "Admin"
+        SUPPORT = "support", "Support"
         MODERATOR = "moderator", "Moderator"
         USER = "user", "User"
 
@@ -24,6 +25,10 @@ class User(AbstractUser, TimeStampedModel):
     instagram_url = models.URLField(blank=True)
     warning_count = models.PositiveSmallIntegerField(default=0)
     banned_at = models.DateTimeField(blank=True, null=True)
+    terms_accepted_at = models.DateTimeField(blank=True, null=True)
+    privacy_policy_accepted_at = models.DateTimeField(blank=True, null=True)
+    personal_data_consent_accepted_at = models.DateTimeField(blank=True, null=True)
+    public_personal_data_consent_accepted_at = models.DateTimeField(blank=True, null=True)
 
     @property
     def is_admin_role(self) -> bool:
@@ -31,7 +36,11 @@ class User(AbstractUser, TimeStampedModel):
 
     @property
     def is_post_manager(self) -> bool:
-        return self.is_admin_role or self.role == self.Role.MODERATOR
+        return self.is_admin_role or self.role in {self.Role.SUPPORT, self.Role.MODERATOR}
+
+    @property
+    def can_access_support(self) -> bool:
+        return self.is_admin_role or self.role == self.Role.SUPPORT
 
     @property
     def is_banned(self) -> bool:

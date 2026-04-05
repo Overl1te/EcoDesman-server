@@ -66,6 +66,7 @@ class CurrentUserSerializer(serializers.ModelSerializer):
     stats = serializers.SerializerMethodField()
     is_banned = serializers.BooleanField(read_only=True)
     can_access_admin = serializers.BooleanField(source="is_admin_role", read_only=True)
+    can_access_support = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = User
@@ -87,6 +88,7 @@ class CurrentUserSerializer(serializers.ModelSerializer):
             "warning_count",
             "is_banned",
             "can_access_admin",
+            "can_access_support",
             "stats",
         )
 
@@ -104,6 +106,7 @@ class PublicProfileSerializer(serializers.ModelSerializer):
     stats = serializers.SerializerMethodField()
     is_banned = serializers.BooleanField(read_only=True)
     can_access_admin = serializers.BooleanField(source="is_admin_role", read_only=True)
+    can_access_support = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = User
@@ -123,6 +126,7 @@ class PublicProfileSerializer(serializers.ModelSerializer):
             "warning_count",
             "is_banned",
             "can_access_admin",
+            "can_access_support",
             "stats",
         )
 
@@ -219,6 +223,10 @@ class RegisterSerializer(serializers.Serializer):
     phone = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=32)
     password = serializers.CharField(write_only=True, trim_whitespace=False, min_length=8)
     password_confirmation = serializers.CharField(write_only=True, trim_whitespace=False)
+    accept_terms = serializers.BooleanField()
+    accept_privacy_policy = serializers.BooleanField()
+    accept_personal_data = serializers.BooleanField()
+    accept_public_personal_data_distribution = serializers.BooleanField(required=False, default=False)
 
     def validate_username(self, value: str) -> str:
         normalized = normalize_username(value)
@@ -251,6 +259,15 @@ class RegisterSerializer(serializers.Serializer):
                 {"password_confirmation": ["Пароли не совпадают"]},
             )
 
+        required_acceptances = {
+            "accept_terms": "Нужно принять пользовательское соглашение",
+            "accept_privacy_policy": "Нужно подтвердить ознакомление с политикой обработки персональных данных",
+            "accept_personal_data": "Нужно дать согласие на обработку персональных данных",
+        }
+        for field_name, message in required_acceptances.items():
+            if not attrs.get(field_name):
+                raise serializers.ValidationError({field_name: [message]})
+
         temp_user = User(
             username=attrs["username"],
             email=attrs["email"],
@@ -267,6 +284,13 @@ class RegisterSerializer(serializers.Serializer):
             password=validated_data["password"],
             display_name=validated_data.get("display_name", ""),
             phone=validated_data.get("phone"),
+            accept_terms=validated_data["accept_terms"],
+            accept_privacy_policy=validated_data["accept_privacy_policy"],
+            accept_personal_data=validated_data["accept_personal_data"],
+            accept_public_personal_data_distribution=validated_data.get(
+                "accept_public_personal_data_distribution",
+                False,
+            ),
         )
 
 

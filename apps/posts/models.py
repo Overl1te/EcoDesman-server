@@ -26,15 +26,41 @@ class Post(TimeStampedModel):
     published_at = models.DateTimeField(default=timezone.now)
     is_published = models.BooleanField(default=True)
     view_count = models.PositiveIntegerField(default=0)
+    event_date = models.DateField(null=True, blank=True)
     event_starts_at = models.DateTimeField(null=True, blank=True)
     event_ends_at = models.DateTimeField(null=True, blank=True)
     event_location = models.CharField(max_length=200, blank=True)
+    is_event_cancelled = models.BooleanField(default=False)
+    event_cancelled_at = models.DateTimeField(null=True, blank=True)
+    event_cancelled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="cancelled_event_posts",
+        null=True,
+        blank=True,
+    )
 
     class Meta:
         ordering = ("-published_at", "-id")
 
     def __str__(self) -> str:
         return self.title or self.body[:40]
+
+    def save(self, *args, **kwargs):
+        if self.kind == self.Kind.EVENT:
+            if self.event_date is None and self.event_starts_at is not None:
+                self.event_date = timezone.localdate(self.event_starts_at)
+            if self.event_starts_at is not None and self.event_ends_at is None:
+                self.event_ends_at = self.event_starts_at
+        else:
+            self.event_date = None
+            self.event_starts_at = None
+            self.event_ends_at = None
+            self.event_location = ""
+            self.is_event_cancelled = False
+            self.event_cancelled_at = None
+            self.event_cancelled_by = None
+        super().save(*args, **kwargs)
 
 
 class PostImage(TimeStampedModel):

@@ -9,4 +9,5 @@ urlpatterns = [
     path("", include("apps.map_points.api.urls")),
     path("", include("apps.notifications.api.urls")),
     path("", include("apps.posts.api.urls")),
+    path("", include("apps.support.api.urls")),
 ]

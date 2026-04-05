@@ -143,6 +143,7 @@ class PostApiTests(TestCase):
         )
         self.assertEqual(create_response.status_code, 201)
         post_id = create_response.json()["id"]
+        self.assertEqual(create_response.json()["event_date"], timezone.localdate(event_start).isoformat())
         self.assertEqual(create_response.json()["event_location"], "Нижне-Волжская набережная")
 
         patch_response = self.client.patch(
@@ -308,3 +309,127 @@ class PostApiTests(TestCase):
         self.assertIn(tailored_post.id, result_ids)
         self.assertIn(generic_popular_post.id, result_ids)
         self.assertLess(result_ids.index(tailored_post.id), result_ids.index(generic_popular_post.id))
+
+    def test_event_post_requires_date_when_no_start_time(self):
+        access_token = self.login()
+
+        response = self.client.post(
+            reverse("post-list"),
+            {
+                "title": "Event without date",
+                "body": "This should be rejected",
+                "kind": "event",
+            },
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {access_token}",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("event_date", response.json())
+
+    def test_event_calendar_returns_events_for_requested_month(self):
+        author = User.objects.get(email="anna@econizhny.local")
+        month_date = timezone.localdate() + timezone.timedelta(days=15)
+        outside_month_date = month_date + timezone.timedelta(days=35)
+        month_event = Post.objects.create(
+            author=author,
+            title="River cleanup",
+            body="Meet at the lower embankment",
+            kind=Post.Kind.EVENT,
+            is_published=True,
+            event_date=month_date,
+            event_starts_at=timezone.now() + timezone.timedelta(days=15, hours=2),
+        )
+        outside_month_event = Post.objects.create(
+            author=author,
+            title="May lecture",
+            body="Another month",
+            kind=Post.Kind.EVENT,
+            is_published=True,
+            event_date=outside_month_date,
+            event_starts_at=timezone.now() + timezone.timedelta(days=50),
+        )
+
+        response = self.client.get(
+            reverse("post-calendar"),
+            {"year": month_date.year, "month": month_date.month},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["year"], month_date.year)
+        self.assertEqual(response.json()["month"], month_date.month)
+        result_ids = [item["id"] for item in response.json()["events"]]
+        self.assertIn(month_event.id, result_ids)
+        self.assertNotIn(outside_month_event.id, result_ids)
+
+    def test_author_can_cancel_and_restore_event(self):
+        access_token = self.login()
+        author = User.objects.get(email="anna@econizhny.local")
+        post = Post.objects.create(
+            author=author,
+            title="Cleanup day",
+            body="Original plan",
+            kind=Post.Kind.EVENT,
+            is_published=True,
+            event_date=timezone.localdate() + timezone.timedelta(days=5),
+        )
+
+        cancel_response = self.client.post(
+            reverse("post-cancel", kwargs={"post_id": post.id}),
+            HTTP_AUTHORIZATION=f"Bearer {access_token}",
+        )
+        self.assertEqual(cancel_response.status_code, 200)
+        self.assertTrue(cancel_response.json()["is_event_cancelled"])
+        self.assertIsNotNone(cancel_response.json()["event_cancelled_at"])
+
+        restore_response = self.client.delete(
+            reverse("post-cancel", kwargs={"post_id": post.id}),
+            HTTP_AUTHORIZATION=f"Bearer {access_token}",
+        )
+        self.assertEqual(restore_response.status_code, 200)
+        self.assertFalse(restore_response.json()["is_event_cancelled"])
+        self.assertIsNone(restore_response.json()["event_cancelled_at"])
+
+    def test_moderator_can_cancel_foreign_event(self):
+        moderator_token = self.login(identifier="ivan@econizhny.local")
+        author = User.objects.get(email="anna@econizhny.local")
+        post = Post.objects.create(
+            author=author,
+            title="Shared event",
+            body="Moderator can step in",
+            kind=Post.Kind.EVENT,
+            is_published=True,
+            event_date=timezone.localdate() + timezone.timedelta(days=7),
+        )
+
+        response = self.client.post(
+            reverse("post-cancel", kwargs={"post_id": post.id}),
+            HTTP_AUTHORIZATION=f"Bearer {moderator_token}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["is_event_cancelled"])
+
+    def test_regular_user_cannot_cancel_foreign_event(self):
+        outsider = User.objects.create_user(
+            username="reader",
+            email="reader@example.com",
+            password="demo12345",
+        )
+        author = User.objects.get(email="anna@econizhny.local")
+        post = Post.objects.create(
+            author=author,
+            title="Protected event",
+            body="Only owner or staff can cancel this",
+            kind=Post.Kind.EVENT,
+            is_published=True,
+            event_date=timezone.localdate() + timezone.timedelta(days=9),
+        )
+        access_token = self.login(identifier=outsider.email)
+
+        response = self.client.post(
+            reverse("post-cancel", kwargs={"post_id": post.id}),
+            HTTP_AUTHORIZATION=f"Bearer {access_token}",
+        )
+
+        self.assertEqual(response.status_code, 403)

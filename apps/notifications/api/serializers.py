@@ -14,6 +14,8 @@ class NotificationSerializer(serializers.ModelSerializer):
     actor = NotificationActorSerializer(read_only=True)
     post_id = serializers.IntegerField(source="post.id", read_only=True)
     comment_id = serializers.IntegerField(source="comment.id", read_only=True)
+    support_thread_id = serializers.IntegerField(source="support_thread.id", read_only=True)
+    report_id = serializers.IntegerField(source="report.id", read_only=True)
 
     class Meta:
         model = Notification
@@ -27,5 +29,6 @@ class NotificationSerializer(serializers.ModelSerializer):
             "actor",
             "post_id",
             "comment_id",
+            "support_thread_id",
+            "report_id",
         )
-

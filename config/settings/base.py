@@ -16,6 +16,18 @@ def env_list(name: str, default: str = "") -> list[str]:
     return [item.strip() for item in raw_value.split(",") if item.strip()]
 
 
+def env_list_with_extras(
+    name: str,
+    default: str = "",
+    extras: tuple[str, ...] = (),
+) -> list[str]:
+    values: list[str] = []
+    for item in [*env_list(name, default), *extras]:
+        if item and item not in values:
+            values.append(item)
+    return values
+
+
 def env_str(name: str, default: str = "") -> str:
     return os.getenv(name, default).strip()
 
@@ -136,13 +148,14 @@ SECRET_KEY = os.getenv(
     "econizhny-dev-secret-key-change-me",
 )
 DEBUG = env_bool("DJANGO_DEBUG", default=False)
-ALLOWED_HOSTS = env_list(
+ALLOWED_HOSTS = env_list_with_extras(
     "DJANGO_ALLOWED_HOSTS",
     "127.0.0.1,localhost",
+    extras=("127.0.0.1", "localhost", "0.0.0.0"),
 )
 CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
 CORS_ALLOWED_ORIGINS = env_list("DJANGO_CORS_ALLOWED_ORIGINS")
-CORS_ALLOW_CREDENTIALS = False
+CORS_ALLOW_CREDENTIALS = True
 USE_X_FORWARDED_HOST = True
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
@@ -163,6 +176,7 @@ INSTALLED_APPS = [
     "apps.notifications.apps.NotificationsConfig",
     "apps.users.apps.UsersConfig",
     "apps.posts.apps.PostsConfig",
+    "apps.support.apps.SupportConfig",
 ]
 
 MIDDLEWARE = [
@@ -235,6 +249,7 @@ APP_LOG_LEVEL = env_str("APP_LOG_LEVEL", "INFO").upper()
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
+        "apps.users.api.authentication.CookieJWTAuthentication",
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
@@ -255,6 +270,13 @@ SIMPLE_JWT = {
     "BLACKLIST_AFTER_ROTATION": True,
     "UPDATE_LAST_LOGIN": True,
 }
+
+AUTH_ACCESS_COOKIE_NAME = env_str("AUTH_ACCESS_COOKIE_NAME", "eco_desman_access")
+AUTH_REFRESH_COOKIE_NAME = env_str("AUTH_REFRESH_COOKIE_NAME", "eco_desman_refresh")
+AUTH_COOKIE_DOMAIN = env_str("AUTH_COOKIE_DOMAIN")
+AUTH_COOKIE_SECURE = env_bool("AUTH_COOKIE_SECURE", default=not DEBUG)
+AUTH_COOKIE_SAMESITE = env_str("AUTH_COOKIE_SAMESITE", "Lax")
+AUTH_COOKIE_PATH = env_str("AUTH_COOKIE_PATH", "/")
 
 LOGGING = {
     "version": 1,

@@ -36,11 +36,18 @@ def sync_post_images(post: Post, image_urls: list[str]) -> None:
 
 def _normalize_event_fields(validated_data: dict) -> dict:
     if validated_data.get("kind") != Post.Kind.EVENT:
+        validated_data.setdefault("event_date", None)
         validated_data.setdefault("event_starts_at", None)
         validated_data.setdefault("event_ends_at", None)
         validated_data.setdefault("event_location", "")
+        validated_data.setdefault("is_event_cancelled", False)
+        validated_data.setdefault("event_cancelled_at", None)
+        validated_data.setdefault("event_cancelled_by", None)
     elif "event_ends_at" not in validated_data and "event_starts_at" in validated_data:
         validated_data.setdefault("event_ends_at", validated_data["event_starts_at"])
+    if validated_data.get("kind") == Post.Kind.EVENT:
+        if validated_data.get("event_date") is None and validated_data.get("event_starts_at") is not None:
+            validated_data["event_date"] = timezone.localdate(validated_data["event_starts_at"])
     return validated_data
 
 
@@ -58,14 +65,40 @@ def update_post(*, post: Post, validated_data: dict) -> Post:
     for field, value in validated_data.items():
         setattr(post, field, value)
     if post.kind != Post.Kind.EVENT:
+        post.event_date = None
         post.event_starts_at = None
         post.event_ends_at = None
         post.event_location = ""
+        post.is_event_cancelled = False
+        post.event_cancelled_at = None
+        post.event_cancelled_by = None
     elif post.event_starts_at and not post.event_ends_at:
         post.event_ends_at = post.event_starts_at
+    if post.kind == Post.Kind.EVENT and post.event_date is None and post.event_starts_at:
+        post.event_date = timezone.localdate(post.event_starts_at)
     post.save()
     if image_urls is not None:
         sync_post_images(post, image_urls)
+    return post
+
+
+def set_event_cancellation(*, post: Post, actor, is_cancelled: bool) -> Post:
+    if post.kind != Post.Kind.EVENT:
+        raise ValueError("Only event posts can be cancelled")
+
+    post.is_event_cancelled = is_cancelled
+    if is_cancelled:
+        post.event_cancelled_at = timezone.now()
+        post.event_cancelled_by = actor
+    else:
+        post.event_cancelled_at = None
+        post.event_cancelled_by = None
+    post.save(update_fields=[
+        "is_event_cancelled",
+        "event_cancelled_at",
+        "event_cancelled_by",
+        "updated_at",
+    ])
     return post
 
 

@@ -111,6 +111,10 @@ class RegisterForm(forms.Form):
             password=self.cleaned_data["password"],
             display_name=self.cleaned_data.get("display_name", ""),
             phone=self.cleaned_data.get("phone"),
+            accept_terms=True,
+            accept_privacy_policy=True,
+            accept_personal_data=True,
+            accept_public_personal_data_distribution=False,
         )
 
 

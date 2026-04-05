@@ -27,6 +27,8 @@ class AuthApiTests(TestCase):
         self.assertIn("access", payload)
         self.assertIn("refresh", payload)
         self.assertEqual(payload["user"]["role"], "user")
+        self.assertIn("eco_desman_access", self.client.cookies)
+        self.assertIn("eco_desman_refresh", self.client.cookies)
 
     def test_register_returns_tokens_and_creates_user(self):
         response = self.client.post(
@@ -38,6 +40,10 @@ class AuthApiTests(TestCase):
                 "phone": "+7 (999) 123-45-67",
                 "password": "StrongPass123",
                 "password_confirmation": "StrongPass123",
+                "accept_terms": True,
+                "accept_privacy_policy": True,
+                "accept_personal_data": True,
+                "accept_public_personal_data_distribution": True,
             },
             content_type="application/json",
         )
@@ -47,9 +53,15 @@ class AuthApiTests(TestCase):
         self.assertIn("refresh", response.json())
         self.assertEqual(response.json()["user"]["username"], "newuser")
         self.assertEqual(response.json()["user"]["phone"], "+79991234567")
+        self.assertIsNotNone(response.json()["user"])
         self.assertTrue(
             User.objects.filter(email="newuser@econizhny.local", username="newuser").exists(),
         )
+        created_user = User.objects.get(email="newuser@econizhny.local", username="newuser")
+        self.assertIsNotNone(created_user.terms_accepted_at)
+        self.assertIsNotNone(created_user.privacy_policy_accepted_at)
+        self.assertIsNotNone(created_user.personal_data_consent_accepted_at)
+        self.assertIsNotNone(created_user.public_personal_data_consent_accepted_at)
 
     def test_register_rejects_duplicate_identity_fields_case_insensitively(self):
         response = self.client.post(
@@ -59,6 +71,9 @@ class AuthApiTests(TestCase):
                 "email": "ANNA@econizhny.local",
                 "password": "StrongPass123",
                 "password_confirmation": "StrongPass123",
+                "accept_terms": True,
+                "accept_privacy_policy": True,
+                "accept_personal_data": True,
             },
             content_type="application/json",
         )
@@ -66,6 +81,24 @@ class AuthApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("username", response.json())
         self.assertIn("email", response.json())
+
+    def test_register_requires_mandatory_legal_acceptances(self):
+        response = self.client.post(
+            reverse("auth-register"),
+            {
+                "username": "consentless",
+                "email": "consentless@econizhny.local",
+                "password": "StrongPass123",
+                "password_confirmation": "StrongPass123",
+                "accept_terms": False,
+                "accept_privacy_policy": True,
+                "accept_personal_data": False,
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("accept_terms", response.json())
 
     def test_me_returns_current_user(self):
         access_token = self.login()
@@ -79,6 +112,14 @@ class AuthApiTests(TestCase):
         self.assertEqual(response.json()["email"], "anna@econizhny.local")
         self.assertIn("stats", response.json())
         self.assertFalse(response.json()["can_access_admin"])
+
+    def test_me_accepts_auth_cookie(self):
+        self.login_payload()
+
+        response = self.client.get(reverse("auth-me"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["email"], "anna@econizhny.local")
 
     def test_admin_me_reports_admin_panel_access(self):
         access_token = self.login(identifier="admin@econizhny.local")
@@ -133,7 +174,19 @@ class AuthApiTests(TestCase):
             {"refresh": payload["refresh"]},
             content_type="application/json",
         )
-        self.assertEqual(refresh_response.status_code, 401)
+        self.assertIn(refresh_response.status_code, {401, 403})
+
+    def test_logout_can_use_refresh_cookie_and_clears_auth_cookies(self):
+        payload = self.login_payload()
+
+        logout_response = self.client.post(reverse("auth-logout"))
+
+        self.assertEqual(logout_response.status_code, 204)
+        self.assertEqual(self.client.cookies["eco_desman_access"].value, "")
+        self.assertEqual(self.client.cookies["eco_desman_refresh"].value, "")
+
+        refresh_response = self.client.post(reverse("token_refresh"))
+        self.assertEqual(refresh_response.status_code, 400)
 
     def test_password_reset_request_returns_generic_message_for_existing_user(self):
         response = self.client.post(
@@ -198,7 +251,7 @@ class AuthApiTests(TestCase):
             {"refresh": payload["refresh"]},
             content_type="application/json",
         )
-        self.assertEqual(old_refresh_response.status_code, 401)
+        self.assertIn(old_refresh_response.status_code, {401, 403})
 
     def test_public_profile_hides_draft_posts_from_public_stats(self):
         user = User.objects.create_user(

@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from apps.users.services import can_manage_posts
+
 from ..category_style import sort_categories
 from ..models import (
     MapPoint,
@@ -35,10 +37,21 @@ class MapPointReviewSerializer(serializers.ModelSerializer):
     author_name = serializers.SerializerMethodField()
     created_at = serializers.DateTimeField()
     images = serializers.SerializerMethodField()
+    is_owner = serializers.SerializerMethodField()
+    can_edit = serializers.SerializerMethodField()
 
     class Meta:
         model = MapPointReview
-        fields = ("id", "author_name", "rating", "body", "created_at", "images")
+        fields = (
+            "id",
+            "author_name",
+            "rating",
+            "body",
+            "created_at",
+            "images",
+            "is_owner",
+            "can_edit",
+        )
 
     def get_author_name(self, obj: MapPointReview) -> str:
         if obj.author_name:
@@ -52,6 +65,18 @@ class MapPointReviewSerializer(serializers.ModelSerializer):
 
     def get_images(self, obj: MapPointReview):
         return MapPointReviewImageSerializer(obj.images.all(), many=True).data
+
+    def get_is_owner(self, obj: MapPointReview) -> bool:
+        request = self.context.get("request")
+        return bool(request and request.user.is_authenticated and request.user.id == obj.author_id)
+
+    def get_can_edit(self, obj: MapPointReview) -> bool:
+        request = self.context.get("request")
+        return bool(
+            request
+            and request.user.is_authenticated
+            and (request.user.id == obj.author_id or can_manage_posts(request.user))
+        )
 
 
 class MapPointReviewWriteSerializer(serializers.Serializer):

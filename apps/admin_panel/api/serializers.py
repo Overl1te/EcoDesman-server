@@ -27,6 +27,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
     avatar_url = serializers.SerializerMethodField()
     is_banned = serializers.BooleanField(read_only=True)
     can_access_admin = serializers.BooleanField(source="is_admin_role", read_only=True)
+    can_access_support = serializers.BooleanField(source="can_access_support", read_only=True)
 
     class Meta:
         model = User
@@ -47,6 +48,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
             "date_joined",
             "last_login",
             "can_access_admin",
+            "can_access_support",
         )
 
     def get_avatar_url(self, obj: User) -> str:
