@@ -52,6 +52,7 @@ def build_auth_response(*, user: User, request, status_code: int = status.HTTP_2
         response,
         access_token=payload["access"],
         refresh_token=payload["refresh"],
+        request=request,
     )
     return response
 
@@ -118,6 +119,7 @@ class RefreshView(APIView):
             response,
             access_token=token_payload["access"],
             refresh_token=token_payload.get("refresh", refresh_token),
+            request=request,
         )
         return response
 

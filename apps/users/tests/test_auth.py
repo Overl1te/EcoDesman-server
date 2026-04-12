@@ -1,4 +1,4 @@
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from apps.posts.models import Post
@@ -62,6 +62,37 @@ class AuthApiTests(TestCase):
         self.assertIsNotNone(created_user.privacy_policy_accepted_at)
         self.assertIsNotNone(created_user.personal_data_consent_accepted_at)
         self.assertIsNotNone(created_user.public_personal_data_consent_accepted_at)
+
+    @override_settings(AUTH_COOKIE_SECURE=None)
+    def test_login_sets_non_secure_cookies_for_http_requests_in_auto_mode(self):
+        response = self.client.post(
+            reverse("auth-login"),
+            {
+                "identifier": "anna@econizhny.local",
+                "password": "demo12345",
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.cookies["eco_desman_access"]["secure"])
+        self.assertFalse(response.cookies["eco_desman_refresh"]["secure"])
+
+    @override_settings(AUTH_COOKIE_SECURE=None)
+    def test_login_sets_secure_cookies_for_https_requests_in_auto_mode(self):
+        response = self.client.post(
+            reverse("auth-login"),
+            {
+                "identifier": "anna@econizhny.local",
+                "password": "demo12345",
+            },
+            content_type="application/json",
+            secure=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.cookies["eco_desman_access"]["secure"])
+        self.assertTrue(response.cookies["eco_desman_refresh"]["secure"])
 
     def test_register_rejects_duplicate_identity_fields_case_insensitively(self):
         response = self.client.post(

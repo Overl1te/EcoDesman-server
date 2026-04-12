@@ -274,7 +274,12 @@ SIMPLE_JWT = {
 AUTH_ACCESS_COOKIE_NAME = env_str("AUTH_ACCESS_COOKIE_NAME", "eco_desman_access")
 AUTH_REFRESH_COOKIE_NAME = env_str("AUTH_REFRESH_COOKIE_NAME", "eco_desman_refresh")
 AUTH_COOKIE_DOMAIN = env_str("AUTH_COOKIE_DOMAIN")
-AUTH_COOKIE_SECURE = env_bool("AUTH_COOKIE_SECURE", default=not DEBUG)
+_auth_cookie_secure_raw = os.getenv("AUTH_COOKIE_SECURE")
+AUTH_COOKIE_SECURE = (
+    _auth_cookie_secure_raw.strip().lower() in {"1", "true", "yes", "on"}
+    if _auth_cookie_secure_raw is not None
+    else None
+)
 AUTH_COOKIE_SAMESITE = env_str("AUTH_COOKIE_SAMESITE", "Lax")
 AUTH_COOKIE_PATH = env_str("AUTH_COOKIE_PATH", "/")
 
